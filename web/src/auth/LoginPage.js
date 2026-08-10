@@ -41,6 +41,7 @@ import * as ProviderButton from "./ProviderButton";
 import {createFormAndSubmit, goToLink} from "../Setting";
 import WeChatLoginPanel from "./WeChatLoginPanel";
 import DeviceLoginPanel from "./DeviceLoginPanel";
+import NativeSsoPanel from "./NativeSsoPanel";
 import {CountryCodeSelect} from "../common/select/CountryCodeSelect";
 const FaceRecognitionCommonModal = lazy(() => import("../common/modal/FaceRecognitionCommonModal"));
 const FaceRecognitionModal = lazy(() => import("../common/modal/FaceRecognitionModal"));
@@ -74,7 +75,14 @@ class LoginPage extends React.Component {
       userCode: props.userCode ?? (props.match?.params?.userCode ?? null),
       userCodeStatus: "",
       prefilledUsername: urlParams.get("username") || urlParams.get("login_hint"),
+      nativeSsoActive: false,
+      nativeSsoSuppressed: false,
+      nativeSsoFallbackVisible: false,
+      nativeSsoKnownAgent: null,
+      nativeSsoRestartKey: 0,
+      nativeSsoOverlay: "",
     };
+    this.nativeSsoOverlayTimer = null;
 
     if (this.state.type === "cas" && props.match?.params.casApplicationName !== undefined) {
       this.state.owner = props.match?.params?.owner;
@@ -85,6 +93,13 @@ class LoginPage extends React.Component {
 
     this.form = React.createRef();
     this.refreshInlineCaptcha = this.refreshInlineCaptcha.bind(this);
+  }
+
+  componentWillUnmount() {
+    if (this.nativeSsoOverlayTimer !== null) {
+      clearTimeout(this.nativeSsoOverlayTimer);
+      this.nativeSsoOverlayTimer = null;
+    }
   }
 
   refreshInlineCaptcha() {
@@ -682,6 +697,26 @@ class LoginPage extends React.Component {
     Setting.goToLink(`/login/${name}?${searchParams.toString()}`);
   }
 
+  renderNativeSsoFallbackLink() {
+    if (!this.state.nativeSsoFallbackVisible) {
+      return null;
+    }
+
+    const agentName = this.state.nativeSsoKnownAgent?.displayName || this.state.nativeSsoKnownAgent?.name || i18next.t("login:Native Application");
+
+    return (
+      <div style={{marginTop: 12, textAlign: "center"}}>
+        <Button
+          type="link"
+          style={{padding: 0, height: "auto"}}
+          onClick={() => this.retryNativeSso()}
+        >
+          {i18next.t("login:Retry Native SSO with {{agent}}", {agent: agentName})}
+        </Button>
+      </div>
+    );
+  }
+
   renderFormItem(application, signinItem) {
     if (!signinItem.visible && signinItem.name !== "Forgot password?") {
       return null;
@@ -736,8 +771,7 @@ class LoginPage extends React.Component {
           <div dangerouslySetInnerHTML={{__html: ("<style>" + signinItem.customCss?.replaceAll("<style>", "").replaceAll("</style>", "") + "</style>")}} />
           {this.renderMethodChoiceBox()}
         </div>
-      )
-      ;
+      );
     } else if (signinItem.name === "Username") {
       if (this.state.loginMethod === "wechat") {
         return (<WeChatLoginPanel application={application} loginMethod={this.state.loginMethod} />);
@@ -930,6 +964,7 @@ class LoginPage extends React.Component {
                     signinItem.label ? signinItem.label : i18next.t("login:Sign In")
             }
           </Button>
+          {this.renderNativeSsoFallbackLink()}
           {
             this.state.type === "device" ? (
               <Button
@@ -1250,6 +1285,99 @@ class LoginPage extends React.Component {
       const message = {tag: "Casdoor", type: "SilentSignin", data: data};
       window.parent.postMessage(message, "*");
     }
+  }
+
+  showNativeSsoOverlay(messageText) {
+    if (this.nativeSsoOverlayTimer !== null) {
+      clearTimeout(this.nativeSsoOverlayTimer);
+      this.nativeSsoOverlayTimer = null;
+    }
+
+    this.setState({nativeSsoOverlay: messageText});
+    this.nativeSsoOverlayTimer = setTimeout(() => {
+      this.setState({nativeSsoOverlay: ""});
+      this.nativeSsoOverlayTimer = null;
+    }, 2200);
+  }
+
+  handleNativeSsoFallback(messageText, agent) {
+    this.setState({
+      nativeSsoActive: false,
+      nativeSsoSuppressed: true,
+      nativeSsoFallbackVisible: true,
+      nativeSsoKnownAgent: agent || this.state.nativeSsoKnownAgent,
+    });
+
+    if (messageText) {
+      this.showNativeSsoOverlay(messageText);
+    }
+  }
+
+  retryNativeSso() {
+    this.setState((prevState) => ({
+      nativeSsoSuppressed: false,
+      nativeSsoFallbackVisible: true,
+      nativeSsoRestartKey: prevState.nativeSsoRestartKey + 1,
+    }));
+  }
+
+  handleNativeSsoSuccess(result) {
+    const accessToken = result?.accessToken || result?.token?.access_token || "";
+    if (accessToken === "") {
+      this.handleNativeSsoFallback(i18next.t("login:Invalid Native SSO response"));
+      return;
+    }
+
+    const oAuthParams = Util.getOAuthGetParameters();
+    AuthBackend.completeNativeSso(accessToken, oAuthParams).then((res) => {
+      if (res.status === "ok") {
+        const responseType = oAuthParams?.responseType || "login";
+        const responseTypes = responseType.split(" ");
+        const responseMode = oAuthParams?.responseMode || "query";
+        if (responseType === "login") {
+          if (res.data3) {
+            sessionStorage.setItem("signinUrl", window.location.pathname + window.location.search);
+            Setting.goToLinkSoft(this, "/account");
+            return;
+          }
+          Setting.showMessage("success", i18next.t("application:Logged in successfully"));
+          this.props.onLoginSuccess();
+        } else if (responseType === "code") {
+          this.postCodeLoginAction(res);
+        } else if (responseType === "device") {
+          Setting.showMessage("success", i18next.t("application:Logged in successfully"));
+          this.setState({
+            userCodeStatus: "success",
+          });
+        } else if (responseTypes.includes("token") || responseTypes.includes("id_token")) {
+          if (res.data3) {
+            sessionStorage.setItem("signinUrl", window.location.pathname + window.location.search);
+            Setting.goToLinkSoft(this, "/account");
+            return;
+          }
+          const amendatoryResponseType = responseType === "token" ? "access_token" : responseType;
+          const nativeSsoAccessToken = res.data;
+          if (responseMode === "form_post") {
+            const params = {
+              token: responseTypes.includes("token") ? res.data : null,
+              id_token: responseTypes.includes("id_token") ? res.data : null,
+              token_type: "bearer",
+              state: oAuthParams?.state,
+            };
+            createFormAndSubmit(oAuthParams?.redirectUri, params);
+          } else {
+            Setting.goToLink(`${oAuthParams.redirectUri}#${amendatoryResponseType}=${nativeSsoAccessToken}&state=${oAuthParams.state}&token_type=bearer`);
+          }
+        } else {
+          Setting.showMessage("success", i18next.t("application:Logged in successfully"));
+          this.props.onLoginSuccess();
+        }
+      } else {
+        this.handleNativeSsoFallback(res.msg || i18next.t("application:Failed to sign in"));
+      }
+    }).catch((err) => {
+      this.handleNativeSsoFallback(err.message || i18next.t("application:Failed to sign in"));
+    });
   }
 
   handleDeviceLoginComplete(deviceCode) {
@@ -1716,29 +1844,60 @@ class LoginPage extends React.Component {
       );
     }
 
+    const isOrgChoiceVisible = this.isOrganizationChoiceBoxVisible(application.orgChoiceMode);
     const wechatSigninMethods = application.signinMethods?.filter(method => method.name === "WeChat" && method.rule === "Login page");
     const sidePanels = [];
 
-    if (wechatSigninMethods?.length > 0) {
-      sidePanels.push(
-        <div key="wechat-panel">
-          <h3 style={{textAlign: "center", width: 320}}>{i18next.t("provider:Please use WeChat to scan the QR code and follow the official account for sign in")}</h3>
-          <WeChatLoginPanel application={application} loginMethod={this.state.loginMethod} />
-        </div>
-      );
-    }
+    if (!isOrgChoiceVisible) {
+      if (wechatSigninMethods?.length > 0) {
+        sidePanels.push(
+          <div key="wechat-panel">
+            <h3 style={{textAlign: "center", width: 320}}>{i18next.t("provider:Please use WeChat to scan the QR code and follow the official account for sign in")}</h3>
+            <WeChatLoginPanel application={application} loginMethod={this.state.loginMethod} />
+          </div>
+        );
+      }
 
-    if (application.signinMethods?.some(method => method.name === "Device login" && method.rule === "Login page") && this.state.type !== "device") {
-      sidePanels.push(
-        <div key="device-panel">
-          {this.renderDeviceLoginSidePanel(application)}
-        </div>
-      );
+      if (application.signinMethods?.some(method => method.name === "Device login" && method.rule === "Login page") && this.state.type !== "device") {
+        sidePanels.push(
+          <div key="device-panel">
+            {this.renderDeviceLoginSidePanel(application)}
+          </div>
+        );
+      }
     }
 
     return (
       <React.Fragment>
         <CustomGithubCorner />
+        <NativeSsoPanel
+          key={this.state.nativeSsoRestartKey}
+          application={application}
+          suppressed={this.state.nativeSsoSuppressed}
+          onStatusChange={(active) => this.setState({nativeSsoActive: active})}
+          onKnownAgent={(agent) => this.setState({nativeSsoKnownAgent: agent})}
+          onSuccess={(result) => this.handleNativeSsoSuccess(result)}
+          onFallback={(messageText, agent) => this.handleNativeSsoFallback(messageText, agent)}
+        />
+        {this.state.nativeSsoOverlay ? (
+          <div
+            style={{
+              position: "fixed",
+              top: 24,
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 2000,
+              backgroundColor: "rgba(0, 0, 0, 0.75)",
+              color: "#fff",
+              padding: "10px 20px",
+              borderRadius: 6,
+              fontSize: 14,
+              pointerEvents: "none",
+            }}
+          >
+            {this.state.nativeSsoOverlay}
+          </div>
+        ) : null}
         <div className="login-content" style={{margin: this.props.preview ?? this.parseOffset(application.formOffset)}}>
           {Setting.inIframe() || Setting.isMobile() ? null : <style dangerouslySetInnerHTML={{__html: Setting.getStyleInnerCss(application.formCss)}} />}
           {Setting.inIframe() || !Setting.isMobile() ? null : <style dangerouslySetInnerHTML={{__html: Setting.getStyleInnerCss(application.formCssMobile)}} />}

@@ -64,6 +64,7 @@ type TokenWrapper struct {
 	TokenType    string `json:"token_type"`
 	ExpiresIn    int    `json:"expires_in"`
 	Scope        string `json:"scope"`
+	DeviceSecret string `json:"device_secret,omitempty"`
 }
 
 type TokenError struct {
@@ -202,6 +203,14 @@ func IsScopeValidAndExpand(scope string, application *Application) (string, bool
 	var expanded []string
 
 	for _, s := range strings.Fields(scope) {
+		if s == "device_sso" {
+			if !seen[s] {
+				seen[s] = true
+				expanded = append(expanded, s)
+			}
+			continue
+		}
+
 		// Try exact match first.
 		if allowedSet[s] {
 			if !seen[s] {
