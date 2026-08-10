@@ -34,6 +34,8 @@
     "Background URL - Tooltip": "URL of the background image used in the login page",
     "Background URL Mobile": "Background URL Mobile",
     "Background URL Mobile - Tooltip": "URL of the background image used in the login page (mobile)",
+    "Backchannel logout URL": "Backchannel logout URL",
+    "Backchannel logout URL - Tooltip": "The endpoint where Casdoor sends an OIDC Back-Channel Logout token (a signed JWT) when the user logs out, so the application can terminate the corresponding session. Leave empty to disable back-channel logout for this application",
     "Basic": "Basic",
     "Big icon": "Big icon",
     "Binding providers": "Binding providers",
@@ -874,6 +876,8 @@
     "WeChat": "WeChat",
     "WebAuthn": "WebAuthn",
     "sign up now": "sign up now",
+    "username or Email": "username or Email",
+    "username or phone": "username or phone",
     "username, Email or phone": "username, Email or phone"
   },
   "mfa": {
@@ -949,6 +953,8 @@
     "Balance credit - Tooltip": "The credit balance of the organization used for billing or quota purposes",
     "Balance currency": "Balance currency",
     "Balance currency - Tooltip": "The currency unit used for the organization's account balance",
+    "Default token format": "Default token format",
+    "Default token format - Tooltip": "The token format used by newly created applications of this organization, existing applications are not affected",
     "Edit Organization": "Edit Organization",
     "Follow global theme": "Follow global theme",
     "Has privilege consent": "Has privilege consent",
@@ -976,6 +982,8 @@
     "Password expire days": "Password expire days",
     "Password expire days - Tooltip": "Number of days before password expires",
     "Prompt": "Prompt",
+    "Record retention days": "Record retention days",
+    "Record retention days - Tooltip": "Number of days to keep the organization's records (audit logs) before they are automatically deleted by a daily cleanup job. Leave it empty or set it to 0 to keep the records forever",
     "Required": "Required",
     "Soft deletion": "Soft deletion",
     "Soft deletion - Tooltip": "When enabled, deleting users will not completely remove them from the database. Instead, they will be marked as deleted",
@@ -995,7 +1003,8 @@
     "Website URL": "Website URL",
     "Website URL - Tooltip": "The homepage URL of the organization. This field is not used in Casdoor",
     "Widget items": "Widget items",
-    "Widget items - Tooltip": "Items displayed in the widget"
+    "Widget items - Tooltip": "Items displayed in the widget",
+    "days": "days"
   },
   "payment": {
     "Confirm your invoice information": "Confirm your invoice information",

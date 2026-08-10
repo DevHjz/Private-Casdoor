@@ -33,6 +33,8 @@
     "Background URL - Tooltip": "Login sayfası için arkaplan resmi url'i",
     "Background URL Mobile": "Arka Plan URL'si (Mobil)",
     "Background URL Mobile - Tooltip": "Mobil cihazlar için arka plan resmi URL'si",
+    "Backchannel logout URL": "Arka kanal oturum kapatma URL'si",
+    "Backchannel logout URL - Tooltip": "Kullanıcı oturumu kapattığında Casdoor'un, uygulamanın ilgili oturumu sonlandırabilmesi için bir OIDC arka kanal oturum kapatma belirteci (imzalı bir JWT) gönderdiği uç nokta. Bu uygulama için arka kanal oturum kapatmayı devre dışı bırakmak üzere boş bırakın",
     "Basic": "Temel",
     "Big icon": "Büyük simge",
     "Binding providers": "Bağlama sağlayıcıları",
@@ -872,6 +874,8 @@
     "WeChat": "WeChat oturumu",
     "WebAuthn": "WebAuthn kimlik doğrulama",
     "sign up now": "hemen kaydolun",
+    "username or Email": "kullanıcı adınız veya Eposta adresiniz",
+    "username or phone": "kullanıcı adınız veya telefon numaranız",
     "username, Email or phone": "kullanıcı adınız, Eposta adresiniz ve telefon numaranız"
   },
   "mfa": {
@@ -947,6 +951,8 @@
     "Balance credit - Tooltip": "Bakiye kredisi - Araç ipucu",
     "Balance currency": "Bakiye para birimi",
     "Balance currency - Tooltip": "Bakiye para birimi - Araç ipucu",
+    "Default token format": "Varsayılan token biçimi",
+    "Default token format - Tooltip": "Bu organizasyonda yeni oluşturulan uygulamaların kullanacağı token biçimi, mevcut uygulamalar etkilenmez",
     "Edit Organization": "Organizasyonu Düzenle",
     "Follow global theme": "Küresel temayı takip et",
     "Has privilege consent": "Ayrıcalık onayı var",

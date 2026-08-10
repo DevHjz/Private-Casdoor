@@ -28,6 +28,7 @@ import * as phoneNumber from "libphonenumber-js";
 import moment from "moment";
 import {MfaAuthVerifyForm, NextMfa, RequiredMfa} from "./auth/mfa/MfaAuthVerifyForm";
 import {EmailMfaType, SmsMfaType, TotpMfaType} from "./auth/MfaSetupPage";
+import * as PasswordChecker from "./common/PasswordChecker";
 
 const {Option} = Select;
 
@@ -37,6 +38,12 @@ export const StaticBaseUrl = Conf.StaticBaseUrl;
 
 export const MAX_PAGE_SIZE = 25;
 export const SEARCH_DEBOUNCE_MS = 300;
+
+// getPasswordPopoverOpen returns whether the password requirement popover should stay open:
+// keep it visible only while the user has typed a password that does not yet meet all requirements.
+export function getPasswordPopoverOpen(password, passwordOptions) {
+  return password.length > 0 && PasswordChecker.checkPasswordComplexity(password, passwordOptions) !== "";
+}
 
 export const Countries = [
   {label: "English", key: "en", country: "US", alt: "English"},
@@ -1061,6 +1068,17 @@ export function deepCopy(obj) {
   return Object.assign({}, obj);
 }
 
+// In "add" mode the object has already been created on the server before the edit page is
+// shown, so the "Cancel" button deletes it again. The deletion must use the owner and name
+// that the object was created with, otherwise renaming the object in the form would make
+// "Cancel" delete another, already existing object instead.
+export function getDeleteObj(obj, owner, name) {
+  const res = deepCopy(obj);
+  res.owner = owner;
+  res.name = name;
+  return res;
+}
+
 export function addRow(array, row, position = "end") {
   return position === "end" ? [...array, row] : [row, ...array];
 }
@@ -1227,6 +1245,16 @@ export function getLanguage() {
 export function setLanguage(language) {
   localStorage.setItem("language", language);
   i18next.changeLanguage(language);
+}
+
+// The language chosen on the signin/signup page, remembered so it survives the
+// redirect through a provider and can be saved to the newly created user.
+export function setSigninLanguage(language) {
+  sessionStorage.setItem("signinLanguage", language);
+}
+
+export function getSigninLanguage() {
+  return sessionStorage.getItem("signinLanguage") ?? "";
 }
 
 export function getAcceptLanguage() {
@@ -2600,10 +2628,6 @@ export function getVersionInfo(text, siteName) {
   } catch (e) {
     return {text: "", link: ""};
   }
-}
-
-export function prependRow(array, row) {
-  return [row, ...array];
 }
 
 function getOriginalName(name) {

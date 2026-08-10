@@ -33,6 +33,8 @@
     "Background URL - Tooltip": "URL obrazu tła używanego na stronie logowania",
     "Background URL Mobile": "URL tła (wersja mobilna)",
     "Background URL Mobile - Tooltip": "URL obrazu tła dla urządzeń mobilnych",
+    "Backchannel logout URL": "URL wylogowania kanałem zwrotnym",
+    "Backchannel logout URL - Tooltip": "Punkt końcowy, do którego Casdoor wysyła token wylogowania kanałem zwrotnym OIDC (podpisany JWT) po wylogowaniu użytkownika, aby aplikacja mogła zakończyć odpowiednią sesję. Pozostaw puste, aby wyłączyć wylogowanie kanałem zwrotnym dla tej aplikacji",
     "Basic": "Podstawowy",
     "Big icon": "Duża ikona",
     "Binding providers": "Dostawcy powiązani",
@@ -872,6 +874,8 @@
     "WeChat": "Logowanie WeChat",
     "WebAuthn": "Uwierzytelnianie WebAuthn",
     "sign up now": "zarejestruj się teraz",
+    "username or Email": "nazwa użytkownika lub e-mail",
+    "username or phone": "nazwa użytkownika lub telefon",
     "username, Email or phone": "nazwa użytkownika, e-mail lub telefon"
   },
   "mfa": {
@@ -947,6 +951,8 @@
     "Balance credit - Tooltip": "Saldo kredytów - Podpowiedź",
     "Balance currency": "Waluta salda",
     "Balance currency - Tooltip": "Waluta salda - Podpowiedź",
+    "Default token format": "Domyślny format tokena",
+    "Default token format - Tooltip": "Format tokena używany przez nowo utworzone aplikacje tej organizacji, istniejące aplikacje nie są zmieniane",
     "Edit Organization": "Edytuj organizację",
     "Follow global theme": "Zastosuj motyw globalny",
     "Has privilege consent": "Ma zgodę na przywileje",

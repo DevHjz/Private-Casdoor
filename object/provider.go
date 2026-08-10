@@ -52,7 +52,7 @@ type Provider struct {
 	CustomUserInfoUrl string            `xorm:"varchar(200)" json:"customUserInfoUrl"`
 	CustomLogoutUrl   string            `xorm:"varchar(200)" json:"customLogoutUrl"`
 	CustomLogo        string            `xorm:"varchar(200)" json:"customLogo"`
-	Scopes            string            `xorm:"varchar(100)" json:"scopes"`
+	Scopes            string            `xorm:"varchar(200)" json:"scopes"`
 	UserMapping       map[string]string `xorm:"varchar(500)" json:"userMapping"`
 	HttpHeaders       map[string]string `xorm:"varchar(500)" json:"httpHeaders"`
 
@@ -61,7 +61,7 @@ type Provider struct {
 	DisableSsl bool   `json:"disableSsl"`                  // Deprecated: Use SslMode instead. If the provider type is WeChat, DisableSsl means EnableQRCode, if type is Google, it means sync phone number
 	SslMode    string `xorm:"varchar(100)" json:"sslMode"` // "Auto" (empty means Auto), "Enable", "Disable"
 	Title      string `xorm:"varchar(100)" json:"title"`
-	Content    string `xorm:"varchar(2000)" json:"content"` // If provider type is WeChat, Content means QRCode string by Base64 encoding
+	Content    string `xorm:"mediumtext" json:"content"` // If provider type is WeChat, Content means QRCode string by Base64 encoding
 	Receiver   string `xorm:"varchar(100)" json:"receiver"`
 
 	RegionId     string `xorm:"varchar(100)" json:"regionId"`

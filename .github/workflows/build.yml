@@ -2,7 +2,7 @@ name: 手动构建镜像到阿里云ACR
 
 # 仅版本号在此修改，其余全部读取 GitHub 配置
 env:
-  CUSTOM_VERSION: "v0.3.117.0"
+  CUSTOM_VERSION: "v0.3.146.0"
 
 # 仅手动点击触发
 on:

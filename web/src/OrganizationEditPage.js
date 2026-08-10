@@ -14,7 +14,7 @@
 
 import React from "react";
 import Loading from "./common/Loading";
-import {Button, Card, Col, Input, InputNumber, Popconfirm, Radio, Row, Select, Switch} from "antd";
+import {AutoComplete, Button, Card, Col, Input, InputNumber, Popconfirm, Radio, Row, Select, Switch} from "antd";
 import * as OrganizationBackend from "./backend/OrganizationBackend";
 import * as ApplicationBackend from "./backend/ApplicationBackend";
 import * as LdapBackend from "./backend/LdapBackend";
@@ -56,6 +56,15 @@ class OrganizationEditPage extends React.Component {
   }
 
   getOrganization() {
+    if (this.state.mode === "add" && this.props.location.organization) {
+      const organization = this.props.location.organization;
+      organization["enableDarkLogo"] = !!organization["logoDark"];
+      this.setState({
+        organization: organization,
+      });
+      return;
+    }
+
     OrganizationBackend.getOrganization("admin", this.state.organizationName)
       .then((res) => {
         if (res.status === "ok") {
@@ -398,6 +407,40 @@ class OrganizationEditPage extends React.Component {
           </Col>
         </Row>
         <Row style={{marginTop: "20px"}} >
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 19 : 2}>
+            {Setting.getLabel(i18next.t("organization:Token retention days"), i18next.t("organization:Token retention days - Tooltip"))} :
+          </Col>
+          <Col span={4} >
+            <AutoComplete
+              style={{width: "100%"}}
+              value={this.state.organization.tokenRetentionDays ? this.state.organization.tokenRetentionDays.toString() : ""}
+              options={[7, 30, 90, 180, 365].map(days => ({value: days.toString(), label: `${days} ${i18next.t("organization:days")}`}))}
+              filterOption={(inputValue, option) => option.value.startsWith(inputValue)}
+              onChange={value => {
+                const digits = (value || "").replace(/\D/g, "");
+                this.updateOrganizationField("tokenRetentionDays", digits === "" ? 0 : Number(digits));
+              }}
+            />
+          </Col>
+        </Row>
+        <Row style={{marginTop: "20px"}} >
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 19 : 2}>
+            {Setting.getLabel(i18next.t("organization:Record retention days"), i18next.t("organization:Record retention days - Tooltip"))} :
+          </Col>
+          <Col span={4} >
+            <AutoComplete
+              style={{width: "100%"}}
+              value={this.state.organization.recordRetentionDays ? this.state.organization.recordRetentionDays.toString() : ""}
+              options={[7, 30, 90, 180, 365].map(days => ({value: days.toString(), label: `${days} ${i18next.t("organization:days")}`}))}
+              filterOption={(inputValue, option) => option.value.startsWith(inputValue)}
+              onChange={value => {
+                const digits = (value || "").replace(/\D/g, "");
+                this.updateOrganizationField("recordRetentionDays", digits === "" ? 0 : Number(digits));
+              }}
+            />
+          </Col>
+        </Row>
+        <Row style={{marginTop: "20px"}} >
           <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
             {Setting.getLabel(i18next.t("general:Supported country codes"), i18next.t("general:Supported country codes - Tooltip"))} :
           </Col>
@@ -465,6 +508,16 @@ class OrganizationEditPage extends React.Component {
           <Col span={22} >
             <Select virtual={false} style={{width: "100%"}} value={this.state.organization.defaultApplication} onChange={(value => {this.updateOrganizationField("defaultApplication", value);})}
               options={this.state.applications?.map((item) => Setting.getOption(Setting.getApplicationDisplayName(item.name), item.name))
+              } />
+          </Col>
+        </Row>
+        <Row style={{marginTop: "20px"}} >
+          <Col style={{marginTop: "5px"}} span={(Setting.isMobile()) ? 22 : 2}>
+            {Setting.getLabel(i18next.t("organization:Default token format"), i18next.t("organization:Default token format - Tooltip"))} :
+          </Col>
+          <Col span={22} >
+            <Select virtual={false} style={{width: "100%"}} value={!this.state.organization.defaultTokenFormat ? "JWT" : this.state.organization.defaultTokenFormat} onChange={(value => {this.updateOrganizationField("defaultTokenFormat", value);})}
+              options={["JWT", "JWT-Empty", "JWT-Custom", "JWT-Standard"].map((item) => Setting.getOption(item, item))
               } />
           </Col>
         </Row>
@@ -864,7 +917,11 @@ class OrganizationEditPage extends React.Component {
       return;
     }
 
-    OrganizationBackend.updateOrganization(this.state.organization.owner, this.state.organizationName, organization)
+    const isAdd = this.state.mode === "add";
+    const apiCall = isAdd
+      ? OrganizationBackend.addOrganization(organization)
+      : OrganizationBackend.updateOrganization(this.state.organization.owner, this.state.organizationName, organization);
+    apiCall
       .then((res) => {
         if (res.status === "ok") {
           Setting.showMessage("success", i18next.t("general:Successfully saved"));
@@ -875,6 +932,7 @@ class OrganizationEditPage extends React.Component {
 
           this.setState({
             organizationName: this.state.organization.name,
+            mode: "edit",
           });
           window.dispatchEvent(new Event("storageOrganizationsChanged"));
 
@@ -885,7 +943,9 @@ class OrganizationEditPage extends React.Component {
           }
         } else {
           Setting.showMessage("error", `${i18next.t("general:Failed to save")}: ${res.msg}`);
-          this.updateOrganizationField("name", this.state.organizationName);
+          if (!isAdd) {
+            this.updateOrganizationField("name", this.state.organizationName);
+          }
         }
       })
       .catch(error => {
@@ -894,18 +954,7 @@ class OrganizationEditPage extends React.Component {
   }
 
   deleteOrganization() {
-    OrganizationBackend.deleteOrganization(this.state.organization)
-      .then((res) => {
-        if (res.status === "ok") {
-          this.props.history.push("/organizations");
-          window.dispatchEvent(new Event("storageOrganizationsChanged"));
-        } else {
-          Setting.showMessage("error", `${i18next.t("general:Failed to delete")}: ${res.msg}`);
-        }
-      })
-      .catch(error => {
-        Setting.showMessage("error", `${i18next.t("general:Failed to connect to server")}: ${error}`);
-      });
+    this.props.history.push("/organizations");
   }
 
   render() {

@@ -1020,6 +1020,10 @@ func AddUser(user *User, lang string) (bool, error) {
 		}
 	}
 
+	if user.Avatar == "" {
+		user.Avatar = organization.DefaultAvatar
+	}
+
 	if organization.DefaultPassword != "" && user.Password == "123" {
 		user.Password = organization.DefaultPassword
 	}
@@ -1176,8 +1180,9 @@ func deleteUser(user *User) (bool, error) {
 }
 
 func DeleteUser(user *User) (bool, error) {
-	// Forced offline the user first
-	_, err := DeleteSession(util.GetSessionId(user.Owner, user.Name, CasdoorApplication), "")
+	// Forced offline the user first, the sessions are stored under the applications used at
+	// login, so all of them have to be dropped and not only the "app-built-in" one
+	_, err := DeleteAllUserSessions(user.Owner, user.Name)
 	if err != nil {
 		return false, err
 	}
@@ -1440,6 +1445,11 @@ func userChangeTrigger(owner string, oldName string, newName string) error {
 	}
 
 	_, err = session.Where("owner = ? AND user_name = ?", owner, oldName).Cols("user_name").Update(&ThirdPartyLink{UserName: newName})
+	if err != nil {
+		return err
+	}
+
+	err = userEnforcer.RenameUser(util.GetId(owner, oldName), util.GetId(owner, newName))
 	if err != nil {
 		return err
 	}

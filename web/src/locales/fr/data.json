@@ -33,6 +33,8 @@
     "Background URL - Tooltip": "L'URL de l'image d'arrière-plan utilisée sur la page de connexion",
     "Background URL Mobile": "URL de fond mobile",
     "Background URL Mobile - Tooltip": "URL de l'image d'arrière-plan pour les appareils mobiles",
+    "Backchannel logout URL": "URL de déconnexion par canal dérobé",
+    "Backchannel logout URL - Tooltip": "Le point de terminaison auquel Casdoor envoie un jeton de déconnexion par canal dérobé OIDC (un JWT signé) lorsque l'utilisateur se déconnecte, afin que l'application puisse mettre fin à la session correspondante. Laissez vide pour désactiver la déconnexion par canal dérobé pour cette application",
     "Basic": "Basique",
     "Big icon": "Grande icône",
     "Binding providers": "Fournisseurs de liaison",
@@ -872,6 +874,8 @@
     "WeChat": "Connexion WeChat",
     "WebAuthn": "Authentification WebAuthn",
     "sign up now": "Inscrivez-vous maintenant",
+    "username or Email": "identifiant ou adresse e-mail",
+    "username or phone": "identifiant ou téléphone",
     "username, Email or phone": "identifiant, adresse e-mail ou téléphone"
   },
   "mfa": {
@@ -947,6 +951,8 @@
     "Balance credit - Tooltip": "Solde (crédits) - Infobulle",
     "Balance currency": "Devise du solde",
     "Balance currency - Tooltip": "Devise du solde - Infobulle",
+    "Default token format": "Format de jeton par défaut",
+    "Default token format - Tooltip": "Le format de jeton utilisé par les applications nouvellement créées de cette organisation, les applications existantes ne sont pas affectées",
     "Edit Organization": "Modifier l'organisation",
     "Follow global theme": "Suivre le thème global",
     "Has privilege consent": "A le consentement des privilèges",

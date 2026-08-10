@@ -34,6 +34,8 @@
     "Background URL - Tooltip": "登录页背景图的链接",
     "Background URL Mobile": "背景图URL（移动端）",
     "Background URL Mobile - Tooltip": "登录页背景图的链接（移动端）",
+    "Backchannel logout URL": "后端通道登出地址",
+    "Backchannel logout URL - Tooltip": "当用户登出时，Casdoor 会向该地址发送 OIDC 后端通道登出令牌（一个签名的 JWT），以便应用终止对应的会话。留空则不为该应用启用后端通道登出",
     "Basic": "基础",
     "Big icon": "大图标",
     "Binding providers": "绑定提供商",
@@ -873,6 +875,8 @@
     "WeChat": "微信",
     "WebAuthn": "Web身份验证",
     "sign up now": "立即注册",
+    "username or Email": "用户名或Email",
+    "username or phone": "用户名或手机号",
     "username, Email or phone": "用户名、Email或手机号"
   },
   "mfa": {
@@ -948,6 +952,8 @@
     "Balance credit - Tooltip": "用户的余额积分信息",
     "Balance currency": "余额币种",
     "Balance currency - Tooltip": "余额使用的币种类型",
+    "Default token format": "默认令牌格式",
+    "Default token format - Tooltip": "该组织新创建的应用默认使用的令牌格式，不影响已有的应用",
     "Edit Organization": "编辑组织",
     "Follow global theme": "使用全局默认主题",
     "Has privilege consent": "特权同意",
@@ -975,6 +981,8 @@
     "Password expire days": "密码过期天数",
     "Password expire days - Tooltip": "密码过期前的天数",
     "Prompt": "提示",
+    "Record retention days": "日志保留天数",
+    "Record retention days - Tooltip": "组织的日志（审计记录）保留天数，超期的日志会被每天执行的清理任务自动删除。留空或填0表示永久保留",
     "Required": "必须",
     "Soft deletion": "软删除",
     "Soft deletion - Tooltip": "启用后，删除一个用户时不会在数据库彻底清除，只会标记为已删除状态",
@@ -994,7 +1002,8 @@
     "Website URL": "主页地址",
     "Website URL - Tooltip": "组织的主页地址URL，该字段在Casdoor平台中未被使用",
     "Widget items": "功能按钮",
-    "Widget items - Tooltip": "小部件中显示的项目"
+    "Widget items - Tooltip": "小部件中显示的项目",
+    "days": "天"
   },
   "payment": {
     "Confirm your invoice information": "确认您的发票信息",

@@ -79,6 +79,30 @@ class ForgetPage extends React.Component {
     return this.props.application;
   }
 
+  hasProviderOfCategory(category) {
+    const application = this.getApplicationObj();
+    // Keep the same matching rules as GetProviderByCategoryAndRule() in the backend,
+    // the method of the forget-password flow is "forget".
+    return application?.providers?.some(providerItem => providerItem?.provider?.category === category &&
+      ["forget", "", "All", "all", "None"].includes(providerItem.rule)) ?? false;
+  }
+
+  getPlaceholder() {
+    // Only advertise the identifiers that can actually be used: looking the user up by
+    // email or phone is a dead end when the matching provider is not configured for the
+    // application, because there is then no way to send the verification code.
+    const hasEmail = this.hasProviderOfCategory("Email");
+    const hasPhone = this.hasProviderOfCategory("SMS");
+
+    if (hasEmail && !hasPhone) {
+      return i18next.t("login:username or Email");
+    } else if (!hasEmail && hasPhone) {
+      return i18next.t("login:username or phone");
+    }
+
+    return i18next.t("login:username, Email or phone");
+  }
+
   onUpdateApplication(application) {
     this.props.onUpdateApplication(application);
   }
@@ -90,8 +114,11 @@ class ForgetPage extends React.Component {
       AuthBackend.getEmailAndPhone(forms.step1.getFieldValue("organization"), username)
         .then((res) => {
           if (res.status === "ok") {
-            const phone = res.data.phone;
-            const email = res.data.email;
+            // Only offer a verification method whose provider is configured for
+            // the application, otherwise the user hits an admin-only error when
+            // requesting the code (see issue #5647).
+            const phone = this.hasProviderOfCategory("SMS") ? res.data.phone : "";
+            const email = this.hasProviderOfCategory("Email") ? res.data.email : "";
 
             if (!phone && !email) {
               Setting.showMessage("error", i18next.t("general:No verification method"));
@@ -112,10 +139,10 @@ class ForgetPage extends React.Component {
 
               switch (res.data2) {
               case "email":
-                saveFields("email", email, true);
+                email !== "" ? saveFields("email", email, true) : saveFields("phone", phone, true);
                 break;
               case "phone":
-                saveFields("phone", phone, true);
+                phone !== "" ? saveFields("phone", phone, true) : saveFields("email", email, true);
                 break;
               case "username":
                 phone !== "" ? saveFields("phone", phone, false) : saveFields("email", email, false);
@@ -279,7 +306,7 @@ class ForgetPage extends React.Component {
             >
               <Input
                 prefix={<UserOutlined />}
-                placeholder={i18next.t("login:username, Email or phone")}
+                placeholder={this.getPlaceholder()}
               />
             </Form.Item>
             <br />
@@ -458,8 +485,9 @@ class ForgetPage extends React.Component {
                     });
                   }}
                   onBlur={() => {
+                    const password = this.form.current?.getFieldValue("newPassword") ?? "";
                     this.setState({
-                      passwordPopoverOpen: false,
+                      passwordPopoverOpen: Setting.getPasswordPopoverOpen(password, application.organizationObj.passwordOptions),
                     });
                   }}
                 />

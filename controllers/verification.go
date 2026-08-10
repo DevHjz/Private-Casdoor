@@ -324,6 +324,13 @@ func (c *ApiController) SendVerificationCode() {
 				c.ResponseError(c.T("verification:the user does not exist, please sign up first"))
 				return
 			}
+
+			if vform.Method == ForgetVerification {
+				if err = object.CheckLdapPasswordForget(user); err != nil {
+					c.ResponseError(err.Error())
+					return
+				}
+			}
 		} else if vform.Method == ResetVerification {
 			user = c.getCurrentUser()
 		} else if vform.Method == MfaAuthVerification {
@@ -347,6 +354,14 @@ func (c *ApiController) SendVerificationCode() {
 			return
 		}
 
+		// let a "Custom HTTP Email" webhook localize the email, a signup code is sent before the user exists
+		if provider.HttpHeaders == nil {
+			provider.HttpHeaders = map[string]string{}
+		}
+		if _, ok := provider.HttpHeaders["Accept-Language"]; !ok {
+			provider.HttpHeaders["Accept-Language"] = c.GetAcceptLanguage()
+		}
+
 		sendResp = object.SendVerificationCodeToEmail(organization, user, provider, clientIp, vform.Dest, vform.Method, c.Ctx.Request.Host, application.Name, application)
 	case object.VerifyTypePhone:
 		if vform.Method == LoginVerification || vform.Method == ForgetVerification {
@@ -360,6 +375,13 @@ func (c *ApiController) SendVerificationCode() {
 			} else if user == nil {
 				c.ResponseError(c.T("verification:the user does not exist, please sign up first"))
 				return
+			}
+
+			if vform.Method == ForgetVerification {
+				if err = object.CheckLdapPasswordForget(user); err != nil {
+					c.ResponseError(err.Error())
+					return
+				}
 			}
 
 			vform.CountryCode = user.GetCountryCode(vform.CountryCode)
