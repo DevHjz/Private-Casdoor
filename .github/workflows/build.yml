@@ -1,10 +1,6 @@
 name: 手动构建镜像到阿里云ACR
 
-# 仅版本号在此修改，其余全部读取 GitHub Secrets 配置
-env:
-  CUSTOM_VERSION: "v0.3.153.0"
-
-# 仅手动点击触发
+# 仅手动点击触发；镜像版本会根据当前提交包含的最近 Casdoor 发布标签自动计算。
 on:
   workflow_dispatch:
 
@@ -12,8 +8,25 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     steps:
-      - name: 拉取代码
+      - name: 拉取代码及历史标签
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 自动解析 Casdoor 镜像版本
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --force --tags https://github.com/casdoor/casdoor.git '+refs/tags/v*:refs/tags/v*'
+          RELEASE_TAG="$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD)"
+          IFS='.' read -r UPSTREAM_MAJOR UPSTREAM_MINOR UPSTREAM_PATCH <<< "${RELEASE_TAG#v}"
+          if [[ -z "${UPSTREAM_MAJOR}" || -z "${UPSTREAM_MINOR}" || -z "${UPSTREAM_PATCH}" ]]; then
+            echo "无法解析 Casdoor 上游版本标签：${RELEASE_TAG}" >&2
+            exit 1
+          fi
+          CUSTOM_VERSION="v0.${UPSTREAM_MAJOR}.${UPSTREAM_MINOR}.${UPSTREAM_PATCH}"
+          echo "CUSTOM_VERSION=${CUSTOM_VERSION}" >> "$GITHUB_ENV"
+          echo "将构建 Casdoor ${RELEASE_TAG} 对应镜像：${CUSTOM_VERSION}"
 
       # 临时跳过最新 Dockerfile 中的 Go 测试；不会修改仓库提交内容。
       - name: 临时跳过测试（仅构建使用）

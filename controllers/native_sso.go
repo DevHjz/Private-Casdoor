@@ -76,12 +76,18 @@ func (c *ApiController) NativeSsoComplete() {
 	}
 
 	responseType := c.Ctx.Input.Query("responseType")
-	if responseType == "" {
+	// Older web companions could serialize an absent response type as the
+	// literal string "undefined". Treat absent values as the normal direct
+	// login flow while keeping other unexpected response types visible to the
+	// standard authorization handler.
+	if responseType == "" || responseType == "undefined" || responseType == "null" {
 		responseType = ResponseTypeLogin
 	}
 	authForm := form.AuthForm{
 		Type:         responseType,
 		SigninMethod: "Native SSO",
+		SamlRequest:  c.Ctx.Input.Query("samlRequest"),
+		RelayState:   c.Ctx.Input.Query("relayState"),
 	}
 	resp := c.HandleLoggedIn(application, user, &authForm)
 

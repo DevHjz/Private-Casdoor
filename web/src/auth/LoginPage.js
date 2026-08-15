@@ -1317,9 +1317,15 @@ class LoginPage extends React.Component {
     // SAML authorization URLs have samlRequest/relayState but no OAuth client_id.
     // Preserve the application clientId used by NativeSsoPanel's token exchange.
     const oAuthParams = Util.getOAuthGetParameters() || {};
+    const responseType = oAuthParams.responseType || (oAuthParams.samlRequest ? "saml" : "login");
     const nativeSsoParams = {
       ...oAuthParams,
       clientId: this.props.application?.clientId || oAuthParams.clientId || "",
+      // A direct /login request has no OAuth query parameters. Always send a
+      // concrete response type so the completion API never receives the literal
+      // string "undefined" through the generic OAuth query serializer.
+      responseType: responseType,
+      type: oAuthParams.type || responseType,
     };
     AuthBackend.completeNativeSso(accessToken, nativeSsoParams).then((res) => {
       if (res.status !== "ok") {
@@ -1327,7 +1333,6 @@ class LoginPage extends React.Component {
         return;
       }
 
-      const responseType = nativeSsoParams.responseType || "login";
       const responseTypes = responseType.split(" ");
       const responseMode = nativeSsoParams.responseMode || "query";
       if (responseType === "login") {
@@ -1355,6 +1360,28 @@ class LoginPage extends React.Component {
         } else {
           Setting.goToLink(`${nativeSsoParams.redirectUri}#${amendatoryResponseType}=${res.data}&state=${nativeSsoParams.state}&token_type=bearer`);
         }
+      } else if (responseType === "saml") {
+        if (res.data === RequiredMfa) {
+          this.props.onLoginSuccess(window.location.href);
+          return;
+        }
+        if (res.data3) {
+          sessionStorage.setItem("signinUrl", window.location.pathname + window.location.search);
+          Setting.goToLinkSoft(this, "/account");
+          return;
+        }
+        if (res.data2?.method === "POST") {
+          this.setState({
+            samlResponse: res.data,
+            redirectUrl: res.data2.redirectUrl,
+            relayState: nativeSsoParams.relayState,
+          });
+        } else if (res.data2?.redirectUrl) {
+          const redirectUri = res.data2.redirectUrl;
+          Setting.goToLink(`${redirectUri}${redirectUri.includes("?") ? "&" : "?"}SAMLResponse=${encodeURIComponent(res.data)}&RelayState=${encodeURIComponent(nativeSsoParams.relayState || "")}`);
+        } else {
+          this.handleNativeSsoFallback(i18next.t("login:Invalid Native SSO response"));
+        }
       } else {
         this.handleNativeSsoFallback(i18next.t("login:Invalid Native SSO response"));
       }
@@ -1364,7 +1391,10 @@ class LoginPage extends React.Component {
   }
 
   shouldRenderNativeSso(application) {
-    return this.state.mode === "signin" && this.state.type !== "device" && application?.clientId;
+    return this.state.mode === "signin" &&
+      this.state.type !== "device" &&
+      application?.clientId &&
+      !this.isOrganizationChoiceBoxVisible(application?.orgChoiceMode);
   }
 
   renderSignedInBox() {
@@ -1427,7 +1457,9 @@ class LoginPage extends React.Component {
   }
 
   renderDeviceLoginSidePanel(application) {
-    if (!application?.signinMethods?.some(signinMethod => signinMethod?.name === "Device login" && signinMethod.rule === "Login page") || this.state.type === "device") {
+    if (this.isOrganizationChoiceBoxVisible(application?.orgChoiceMode) ||
+      !application?.signinMethods?.some(signinMethod => signinMethod?.name === "Device login" && signinMethod.rule === "Login page") ||
+      this.state.type === "device") {
       return null;
     }
 
@@ -1808,7 +1840,9 @@ class LoginPage extends React.Component {
       );
     }
 
-    if (application.signinMethods?.some(method => method.name === "Device login" && method.rule === "Login page") && this.state.type !== "device") {
+    if (application.signinMethods?.some(method => method.name === "Device login" && method.rule === "Login page") &&
+      this.state.type !== "device" &&
+      !this.isOrganizationChoiceBoxVisible(application.orgChoiceMode)) {
       sidePanels.push(
         <div key="device-panel">
           {this.renderDeviceLoginSidePanel(application)}
