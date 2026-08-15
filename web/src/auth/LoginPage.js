@@ -41,6 +41,7 @@ import * as ProviderButton from "./ProviderButton";
 import {createFormAndSubmit, goToLink} from "../Setting";
 import WeChatLoginPanel from "./WeChatLoginPanel";
 import DeviceLoginPanel from "./DeviceLoginPanel";
+import NativeSsoPanel from "./NativeSsoPanel";
 import {CountryCodeSelect} from "../common/select/CountryCodeSelect";
 const FaceRecognitionCommonModal = lazy(() => import("../common/modal/FaceRecognitionCommonModal"));
 const FaceRecognitionModal = lazy(() => import("../common/modal/FaceRecognitionModal"));
@@ -74,6 +75,10 @@ class LoginPage extends React.Component {
       userCode: props.userCode ?? (props.match?.params?.userCode ?? null),
       userCodeStatus: "",
       prefilledUsername: urlParams.get("username") || urlParams.get("login_hint"),
+      nativeSsoActive: false,
+      nativeSsoSuppressed: false,
+      nativeSsoKnownAgent: null,
+      nativeSsoRestartKey: 0,
     };
 
     if (this.state.type === "cas" && props.match?.params.casApplicationName !== undefined) {
@@ -89,6 +94,10 @@ class LoginPage extends React.Component {
 
   refreshInlineCaptcha() {
     this.captchaRef.current?.loadCaptcha?.();
+  }
+
+  componentWillUnmount() {
+    this.nativeSsoDisposed = true;
   }
 
   componentDidMount() {
@@ -1287,6 +1296,77 @@ class LoginPage extends React.Component {
     });
   }
 
+  handleNativeSsoFallback(messageText, agent) {
+    this.setState({
+      nativeSsoActive: false,
+      nativeSsoSuppressed: true,
+      nativeSsoKnownAgent: agent || this.state.nativeSsoKnownAgent,
+    });
+    if (messageText) {
+      Setting.showMessage("error", messageText);
+    }
+  }
+
+  handleNativeSsoSuccess(result) {
+    const accessToken = result?.accessToken || result?.token?.access_token || "";
+    if (accessToken === "") {
+      this.handleNativeSsoFallback(i18next.t("login:Invalid Native SSO response"));
+      return;
+    }
+
+    // SAML authorization URLs have samlRequest/relayState but no OAuth client_id.
+    // Preserve the application clientId used by NativeSsoPanel's token exchange.
+    const oAuthParams = Util.getOAuthGetParameters() || {};
+    const nativeSsoParams = {
+      ...oAuthParams,
+      clientId: this.props.application?.clientId || oAuthParams.clientId || "",
+    };
+    AuthBackend.completeNativeSso(accessToken, nativeSsoParams).then((res) => {
+      if (res.status !== "ok") {
+        this.handleNativeSsoFallback(res.msg || i18next.t("login:Native SSO was denied"));
+        return;
+      }
+
+      const responseType = nativeSsoParams.responseType || "login";
+      const responseTypes = responseType.split(" ");
+      const responseMode = nativeSsoParams.responseMode || "query";
+      if (responseType === "login") {
+        if (res.data3) {
+          sessionStorage.setItem("signinUrl", window.location.pathname + window.location.search);
+          Setting.goToLinkSoft(this, "/account");
+          return;
+        }
+        Setting.showMessage("success", i18next.t("application:Logged in successfully"));
+        this.props.onLoginSuccess();
+      } else if (responseType === "code") {
+        this.postCodeLoginAction(res);
+      } else if (responseType === "device") {
+        Setting.showMessage("success", i18next.t("application:Logged in successfully"));
+        this.setState({userCodeStatus: "success"});
+      } else if (responseTypes.includes("token") || responseTypes.includes("id_token")) {
+        const amendatoryResponseType = responseType === "token" ? "access_token" : responseType;
+        if (responseMode === "form_post") {
+          createFormAndSubmit(nativeSsoParams.redirectUri, {
+            token: responseTypes.includes("token") ? res.data : null,
+            id_token: responseTypes.includes("id_token") ? res.data : null,
+            token_type: "bearer",
+            state: nativeSsoParams.state,
+          });
+        } else {
+          Setting.goToLink(`${nativeSsoParams.redirectUri}#${amendatoryResponseType}=${res.data}&state=${nativeSsoParams.state}&token_type=bearer`);
+        }
+      } else {
+        this.handleNativeSsoFallback(i18next.t("login:Invalid Native SSO response"));
+      }
+    }).catch((error) => {
+      this.handleNativeSsoFallback(error.message || i18next.t("login:Native SSO was denied"));
+    });
+  }
+
+  shouldRenderNativeSso(application) {
+    return this.state.mode === "signin" && this.state.type !== "device" && application?.clientId;
+  }
+
   renderSignedInBox() {
     if (this.props.account === undefined || this.props.account === null) {
       this.sendSilentSigninData("user-not-logged-in");
@@ -1736,6 +1816,8 @@ class LoginPage extends React.Component {
       );
     }
 
+    const showNativeSso = this.shouldRenderNativeSso(application);
+
     return (
       <React.Fragment>
         <CustomGithubCorner />
@@ -1748,12 +1830,20 @@ class LoginPage extends React.Component {
             </div>
             <div className="login-form">
               <div>
-                {
-                  this.renderLoginPanel(application)
-                }
+                {showNativeSso && !this.state.nativeSsoSuppressed ? (
+                  <NativeSsoPanel
+                    key={`native-sso-${this.state.nativeSsoRestartKey}`}
+                    application={application}
+                    initialAgent={this.state.nativeSsoKnownAgent}
+                    onActiveChange={(active) => this.setState({nativeSsoActive: active})}
+                    onFallback={(messageText, agent) => this.handleNativeSsoFallback(messageText, agent)}
+                    onSuccess={(result) => this.handleNativeSsoSuccess(result)}
+                  />
+                ) : null}
+                {showNativeSso && this.state.nativeSsoActive ? null : this.renderLoginPanel(application)}
               </div>
             </div>
-            {sidePanels.length > 0 ? (
+            {sidePanels.length > 0 && !(showNativeSso && this.state.nativeSsoActive) ? (
               <div style={{display: "flex", justifyContent: "center", alignItems: "center", flexDirection: "column", gap: 24}}>
                 {sidePanels}
               </div>
