@@ -1,6 +1,6 @@
 name: 手动构建镜像到阿里云ACR
 
-# 仅版本号在此修改，其余全部读取 GitHub 配置
+# 仅版本号在此修改，其余全部读取 GitHub Secrets 配置
 env:
   CUSTOM_VERSION: "v0.3.146.0"
 
@@ -15,7 +15,7 @@ jobs:
       - name: 拉取代码
         uses: actions/checkout@v4
 
-      # 🔥 唯一操作：临时屏蔽测试命令，构建完成后无效，不修改你的源码
+      # 临时跳过最新 Dockerfile 中的 Go 测试；不会修改仓库提交内容。
       - name: 临时跳过测试（仅构建使用）
         run: |
           sed -i '22s/^/#/' Dockerfile
@@ -31,8 +31,8 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          # 固定构建官方标准镜像，和官方完全一致，数据库无问题
-          target: standard
+          # Dockerfile 中的阶段名为 STANDARD；与官方标准镜像一致。
+          target: STANDARD
           push: true
           platforms: linux/amd64
           tags: |
