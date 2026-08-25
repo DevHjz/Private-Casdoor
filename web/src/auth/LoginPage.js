@@ -77,9 +77,12 @@ class LoginPage extends React.Component {
       prefilledUsername: urlParams.get("username") || urlParams.get("login_hint"),
       nativeSsoActive: false,
       nativeSsoSuppressed: false,
+      nativeSsoFallbackVisible: false,
       nativeSsoKnownAgent: null,
       nativeSsoRestartKey: 0,
+      nativeSsoOverlay: "",
     };
+    this.nativeSsoOverlayTimer = null;
 
     if (this.state.type === "cas" && props.match?.params.casApplicationName !== undefined) {
       this.state.owner = props.match?.params?.owner;
@@ -92,12 +95,15 @@ class LoginPage extends React.Component {
     this.refreshInlineCaptcha = this.refreshInlineCaptcha.bind(this);
   }
 
-  refreshInlineCaptcha() {
-    this.captchaRef.current?.loadCaptcha?.();
+  componentWillUnmount() {
+    if (this.nativeSsoOverlayTimer !== null) {
+      clearTimeout(this.nativeSsoOverlayTimer);
+      this.nativeSsoOverlayTimer = null;
+    }
   }
 
-  componentWillUnmount() {
-    this.nativeSsoDisposed = true;
+  refreshInlineCaptcha() {
+    this.captchaRef.current?.loadCaptcha?.();
   }
 
   componentDidMount() {
@@ -370,9 +376,8 @@ class LoginPage extends React.Component {
       return;
     }
 
-    if (resp.data3) {
-      sessionStorage.setItem("signinUrl", window.location.pathname + window.location.search);
-      Setting.goToLink("/account");
+    if (resp.data === Setting.RequiredUpdatePassword) {
+      Setting.goToUpdatePassword();
       return;
     }
 
@@ -569,11 +574,6 @@ class LoginPage extends React.Component {
             const responseTypes = responseType.split(" ");
             const responseMode = oAuthParams?.responseMode || "query";
             if (responseType === "login") {
-              if (res.data3) {
-                sessionStorage.setItem("signinUrl", window.location.pathname + window.location.search);
-                Setting.goToLink("/account");
-                return;
-              }
               Setting.showMessage("success", i18next.t("application:Logged in successfully"));
               this.props.onLoginSuccess();
             } else if (responseType === "code") {
@@ -584,11 +584,6 @@ class LoginPage extends React.Component {
                 userCodeStatus: "success",
               });
             } else if (responseTypes.includes("token") || responseTypes.includes("id_token")) {
-              if (res.data3) {
-                sessionStorage.setItem("signinUrl", window.location.pathname + window.location.search);
-                Setting.goToLink("/account");
-                return;
-              }
               const amendatoryResponseType = responseType === "token" ? "access_token" : responseType;
               const accessToken = res.data;
               if (responseMode === "form_post") {
@@ -605,11 +600,6 @@ class LoginPage extends React.Component {
             } else if (responseType === "saml") {
               if (res.data === RequiredMfa) {
                 this.props.onLoginSuccess(window.location.href);
-                return;
-              }
-              if (res.data3) {
-                sessionStorage.setItem("signinUrl", window.location.pathname + window.location.search);
-                Setting.goToLink("/account");
                 return;
               }
               if (res.data2.method === "POST") {
@@ -939,6 +929,7 @@ class LoginPage extends React.Component {
                     signinItem.label ? signinItem.label : i18next.t("login:Sign In")
             }
           </Button>
+          {this.renderNativeSsoFallbackLink()}
           {
             this.state.type === "device" ? (
               <Button
@@ -1261,50 +1252,38 @@ class LoginPage extends React.Component {
     }
   }
 
-  handleDeviceLoginComplete(deviceCode) {
-    const oAuthParams = Util.getOAuthGetParameters();
-    AuthBackend.completeDeviceLogin(deviceCode, oAuthParams).then((res) => {
-      if (res.status === "ok") {
-        const responseType = oAuthParams?.responseType ?? "login";
-        const responseTypes = responseType.split(" ");
-        const responseMode = oAuthParams?.responseMode || "query";
-        if (responseType === "code") {
-          this.postCodeLoginAction(res);
-        } else if (responseTypes.includes("token") || responseTypes.includes("id_token")) {
-          const amendatoryResponseType = responseType === "token" ? "access_token" : responseType;
-          const accessToken = res.data;
-          if (responseMode === "form_post") {
-            const params = {
-              token: responseTypes.includes("token") ? res.data : null,
-              id_token: responseTypes.includes("id_token") ? res.data : null,
-              token_type: "bearer",
-              state: oAuthParams?.state,
-            };
-            createFormAndSubmit(oAuthParams?.redirectUri, params);
-          } else {
-            Setting.goToLink(`${oAuthParams.redirectUri}#${amendatoryResponseType}=${accessToken}&state=${oAuthParams.state}&token_type=bearer`);
-          }
-        } else {
-          Setting.showMessage("success", i18next.t("application:Logged in successfully"));
-          this.props.onLoginSuccess();
-        }
-      } else {
-        Setting.showMessage("error", `${i18next.t("application:Failed to sign in")}: ${res.msg}`);
-      }
-    }).catch((err) => {
-      Setting.showMessage("error", err.message);
-    });
+  showNativeSsoOverlay(messageText) {
+    if (this.nativeSsoOverlayTimer !== null) {
+      clearTimeout(this.nativeSsoOverlayTimer);
+      this.nativeSsoOverlayTimer = null;
+    }
+
+    this.setState({nativeSsoOverlay: messageText});
+    this.nativeSsoOverlayTimer = setTimeout(() => {
+      this.setState({nativeSsoOverlay: ""});
+      this.nativeSsoOverlayTimer = null;
+    }, 2200);
   }
 
   handleNativeSsoFallback(messageText, agent) {
     this.setState({
       nativeSsoActive: false,
       nativeSsoSuppressed: true,
+      nativeSsoFallbackVisible: true,
       nativeSsoKnownAgent: agent || this.state.nativeSsoKnownAgent,
     });
+
     if (messageText) {
-      Setting.showMessage("error", messageText);
+      this.showNativeSsoOverlay(messageText);
     }
+  }
+
+  retryNativeSso() {
+    this.setState((prevState) => ({
+      nativeSsoSuppressed: false,
+      nativeSsoFallbackVisible: true,
+      nativeSsoRestartKey: prevState.nativeSsoRestartKey + 1,
+    }));
   }
 
   handleNativeSsoSuccess(result) {
@@ -1327,6 +1306,7 @@ class LoginPage extends React.Component {
       responseType: responseType,
       type: oAuthParams.type || responseType,
     };
+
     AuthBackend.completeNativeSso(accessToken, nativeSsoParams).then((res) => {
       if (res.status !== "ok") {
         this.handleNativeSsoFallback(res.msg || i18next.t("login:Native SSO was denied"));
@@ -1349,6 +1329,11 @@ class LoginPage extends React.Component {
         Setting.showMessage("success", i18next.t("application:Logged in successfully"));
         this.setState({userCodeStatus: "success"});
       } else if (responseTypes.includes("token") || responseTypes.includes("id_token")) {
+        if (res.data3) {
+          sessionStorage.setItem("signinUrl", window.location.pathname + window.location.search);
+          Setting.goToLinkSoft(this, "/account");
+          return;
+        }
         const amendatoryResponseType = responseType === "token" ? "access_token" : responseType;
         if (responseMode === "form_post") {
           createFormAndSubmit(nativeSsoParams.redirectUri, {
@@ -1390,11 +1375,94 @@ class LoginPage extends React.Component {
     });
   }
 
+  renderNativeSsoFallbackLink() {
+    if (!this.state.nativeSsoFallbackVisible) {
+      return null;
+    }
+
+    return (
+      <div style={{marginTop: 20, textAlign: "center", fontSize: 16, lineHeight: "22px"}}>
+        <a onClick={() => this.retryNativeSso()}>{i18next.t("login:Native SSO")}</a>
+      </div>
+    );
+  }
+
+  renderNativeSsoOverlay() {
+    if (this.state.nativeSsoOverlay === "") {
+      return null;
+    }
+
+    return (
+      <div style={{
+        position: "fixed",
+        top: "50%",
+        left: "50%",
+        transform: "translate(-50%, -50%)",
+        zIndex: 1000,
+        width: 210,
+        height: 205,
+        padding: "0 28px",
+        borderRadius: 10,
+        background: "rgba(0, 0, 0, 0.68)",
+        color: "#fff",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        textAlign: "center",
+        fontSize: 20,
+        fontWeight: 500,
+        lineHeight: 1.25,
+        pointerEvents: "none",
+      }}>
+        <div style={{fontSize: 58, lineHeight: 1, fontWeight: 200, marginBottom: 34}}>
+          {"×"}
+        </div>
+        <div>{this.state.nativeSsoOverlay}</div>
+      </div>
+    );
+  }
+
   shouldRenderNativeSso(application) {
     return this.state.mode === "signin" &&
       this.state.type !== "device" &&
       application?.clientId &&
       !this.isOrganizationChoiceBoxVisible(application?.orgChoiceMode);
+  }
+
+  handleDeviceLoginComplete(deviceCode) {
+    const oAuthParams = Util.getOAuthGetParameters();
+    AuthBackend.completeDeviceLogin(deviceCode, oAuthParams).then((res) => {
+      if (res.status === "ok") {
+        const responseType = oAuthParams?.responseType ?? "login";
+        const responseTypes = responseType.split(" ");
+        const responseMode = oAuthParams?.responseMode || "query";
+        if (responseType === "code") {
+          this.postCodeLoginAction(res);
+        } else if (responseTypes.includes("token") || responseTypes.includes("id_token")) {
+          const amendatoryResponseType = responseType === "token" ? "access_token" : responseType;
+          const accessToken = res.data;
+          if (responseMode === "form_post") {
+            const params = {
+              token: responseTypes.includes("token") ? res.data : null,
+              id_token: responseTypes.includes("id_token") ? res.data : null,
+              token_type: "bearer",
+              state: oAuthParams?.state,
+            };
+            createFormAndSubmit(oAuthParams?.redirectUri, params);
+          } else {
+            Setting.goToLink(`${oAuthParams.redirectUri}#${amendatoryResponseType}=${accessToken}&state=${oAuthParams.state}&token_type=bearer`);
+          }
+        } else {
+          Setting.showMessage("success", i18next.t("application:Logged in successfully"));
+          this.props.onLoginSuccess();
+        }
+      } else {
+        Setting.showMessage("error", `${i18next.t("application:Failed to sign in")}: ${res.msg}`);
+      }
+    }).catch((err) => {
+      Setting.showMessage("error", err.message);
+    });
   }
 
   renderSignedInBox() {
@@ -1856,6 +1924,7 @@ class LoginPage extends React.Component {
       <React.Fragment>
         <CustomGithubCorner />
         <div className="login-content" style={{margin: this.props.preview ?? this.parseOffset(application.formOffset)}}>
+          {this.renderNativeSsoOverlay()}
           {Setting.inIframe() || Setting.isMobile() ? null : <style dangerouslySetInnerHTML={{__html: Setting.getStyleInnerCss(application.formCss)}} />}
           {Setting.inIframe() || !Setting.isMobile() ? null : <style dangerouslySetInnerHTML={{__html: Setting.getStyleInnerCss(application.formCssMobile)}} />}
           <div className={Setting.isDarkTheme(this.props.themeAlgorithm) ? "login-panel-dark" : "login-panel"}>
@@ -1868,6 +1937,7 @@ class LoginPage extends React.Component {
                   <NativeSsoPanel
                     key={`native-sso-${this.state.nativeSsoRestartKey}`}
                     application={application}
+                    restartKey={this.state.nativeSsoRestartKey}
                     initialAgent={this.state.nativeSsoKnownAgent}
                     onActiveChange={(active) => this.setState({nativeSsoActive: active})}
                     onFallback={(messageText, agent) => this.handleNativeSsoFallback(messageText, agent)}
