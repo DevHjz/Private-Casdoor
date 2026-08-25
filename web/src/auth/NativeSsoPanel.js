@@ -86,12 +86,13 @@ class NativeSsoPanel extends React.Component {
 
   getNativeSsoRequestContext() {
     const oAuthParams = Util.getOAuthGetParameters();
+    const responseType = oAuthParams?.responseType || (oAuthParams?.samlRequest ? "saml" : this.props.type || "login");
     return {
       serverUrl: Setting.getFullServerUrl(),
       clientId: this.props.application?.clientId || oAuthParams?.clientId || "",
       applicationName: this.props.application?.name || "",
       organization: this.props.application?.organization || "",
-      responseType: oAuthParams?.responseType || this.props.type || "login",
+      responseType: responseType,
       redirectUri: oAuthParams?.redirectUri || "",
       scope: oAuthParams?.scope || "openid profile email device_sso",
       state: oAuthParams?.state || "",

@@ -793,7 +793,7 @@ class LoginPage extends React.Component {
               <Input
                 className="signup-phone-input"
                 placeholder={signinItem.placeholder}
-                style={{width: "65%", textAlign: "left"}
+                style={{width: "65%", textAlign: "left"}}
                 onChange={e => this.setState({username: e.target.value})}
               />
             </Form.Item>
@@ -1293,51 +1293,82 @@ class LoginPage extends React.Component {
       return;
     }
 
-    const oAuthParams = Util.getOAuthGetParameters();
-    AuthBackend.completeNativeSso(accessToken, oAuthParams).then((res) => {
-      if (res.status === "ok") {
-        const responseType = oAuthParams?.responseType || "login";
-        const responseTypes = responseType.split(" ");
-        const responseMode = oAuthParams?.responseMode || "query";
-        if (responseType === "login") {
-          if (res.data3) {
-            sessionStorage.setItem("signinUrl", window.location.pathname + window.location.search);
-            Setting.goToLinkSoft(this, "/account");
-            return;
-          }
-          Setting.showMessage("success", i18next.t("application:Logged in successfully"));
-          this.props.onLoginSuccess();
-        } else if (responseType === "code") {
-          this.postCodeLoginAction(res);
-        } else if (responseType === "device") {
-          Setting.showMessage("success", i18next.t("application:Logged in successfully"));
-          this.setState({
-            userCodeStatus: "success",
+    // SAML authorization URLs have samlRequest/relayState but no OAuth client_id.
+    // Preserve the application clientId used by NativeSsoPanel's token exchange.
+    const oAuthParams = Util.getOAuthGetParameters() || {};
+    const responseType = oAuthParams.responseType || (oAuthParams.samlRequest ? "saml" : "login");
+    const nativeSsoParams = {
+      ...oAuthParams,
+      clientId: this.props.application?.clientId || oAuthParams.clientId || "",
+      // A direct /login request has no OAuth query parameters. Always send a
+      // concrete response type so the completion API never receives the literal
+      // string "undefined" through the generic OAuth query serializer.
+      responseType: responseType,
+      type: oAuthParams.type || responseType,
+    };
+
+    AuthBackend.completeNativeSso(accessToken, nativeSsoParams).then((res) => {
+      if (res.status !== "ok") {
+        this.handleNativeSsoFallback(res.msg || i18next.t("login:Native SSO was denied"));
+        return;
+      }
+
+      const responseTypes = responseType.split(" ");
+      const responseMode = nativeSsoParams.responseMode || "query";
+      if (responseType === "login") {
+        if (res.data3) {
+          sessionStorage.setItem("signinUrl", window.location.pathname + window.location.search);
+          Setting.goToLinkSoft(this, "/account");
+          return;
+        }
+        Setting.showMessage("success", i18next.t("application:Logged in successfully"));
+        this.props.onLoginSuccess();
+      } else if (responseType === "code") {
+        this.postCodeLoginAction(res);
+      } else if (responseType === "device") {
+        Setting.showMessage("success", i18next.t("application:Logged in successfully"));
+        this.setState({userCodeStatus: "success"});
+      } else if (responseTypes.includes("token") || responseTypes.includes("id_token")) {
+        if (res.data3) {
+          sessionStorage.setItem("signinUrl", window.location.pathname + window.location.search);
+          Setting.goToLinkSoft(this, "/account");
+          return;
+        }
+        const amendatoryResponseType = responseType === "token" ? "access_token" : responseType;
+        if (responseMode === "form_post") {
+          createFormAndSubmit(nativeSsoParams.redirectUri, {
+            token: responseTypes.includes("token") ? res.data : null,
+            id_token: responseTypes.includes("id_token") ? res.data : null,
+            token_type: "bearer",
+            state: nativeSsoParams.state,
           });
-        } else if (responseTypes.includes("token") || responseTypes.includes("id_token")) {
-          if (res.data3) {
-            sessionStorage.setItem("signinUrl", window.location.pathname + window.location.search);
-            Setting.goToLinkSoft(this, "/account");
-            return;
-          }
-          const amendatoryResponseType = responseType === "token" ? "access_token" : responseType;
-          const nativeSsoAccessToken = res.data;
-          if (responseMode === "form_post") {
-            const params = {
-              token: responseTypes.includes("token") ? res.data : null,
-              id_token: responseTypes.includes("id_token") ? res.data : null,
-              token_type: "bearer",
-              state: oAuthParams?.state,
-            };
-            createFormAndSubmit(oAuthParams?.redirectUri, params);
-          } else {
-            Setting.goToLink(`${oAuthParams.redirectUri}#${amendatoryResponseType}=${nativeSsoAccessToken}&state=${oAuthParams.state}&token_type=bearer`);
-          }
+        } else {
+          Setting.goToLink(`${nativeSsoParams.redirectUri}#${amendatoryResponseType}=${res.data}&state=${nativeSsoParams.state}&token_type=bearer`);
+        }
+      } else if (responseType === "saml") {
+        if (res.data === RequiredMfa) {
+          this.props.onLoginSuccess(window.location.href);
+          return;
+        }
+        if (res.data3) {
+          sessionStorage.setItem("signinUrl", window.location.pathname + window.location.search);
+          Setting.goToLinkSoft(this, "/account");
+          return;
+        }
+        if (res.data2?.method === "POST") {
+          this.setState({
+            samlResponse: res.data,
+            redirectUrl: res.data2.redirectUrl,
+            relayState: nativeSsoParams.relayState,
+          });
+        } else if (res.data2?.redirectUrl) {
+          const redirectUri = res.data2.redirectUrl;
+          Setting.goToLink(`${redirectUri}${redirectUri.includes("?") ? "&" : "?"}SAMLResponse=${encodeURIComponent(res.data)}&RelayState=${encodeURIComponent(nativeSsoParams.relayState || "")}`);
         } else {
           this.handleNativeSsoFallback(i18next.t("login:Invalid Native SSO response"));
         }
       } else {
-        this.handleNativeSsoFallback(res.msg || i18next.t("login:Native SSO was denied"));
+        this.handleNativeSsoFallback(i18next.t("login:Invalid Native SSO response"));
       }
     }).catch((error) => {
       this.handleNativeSsoFallback(error.message || i18next.t("login:Native SSO was denied"));
@@ -1393,7 +1424,10 @@ class LoginPage extends React.Component {
   }
 
   shouldRenderNativeSso(application) {
-    return this.state.mode === "signin" && this.state.type !== "device" && application?.clientId;
+    return this.state.mode === "signin" &&
+      this.state.type !== "device" &&
+      application?.clientId &&
+      !this.isOrganizationChoiceBoxVisible(application?.orgChoiceMode);
   }
 
   handleDeviceLoginComplete(deviceCode) {
@@ -1491,7 +1525,9 @@ class LoginPage extends React.Component {
   }
 
   renderDeviceLoginSidePanel(application) {
-    if (!application?.signinMethods?.some(signinMethod => signinMethod?.name === "Device login" && signinMethod.rule === "Login page") || this.state.type === "device") {
+    if (this.isOrganizationChoiceBoxVisible(application?.orgChoiceMode) ||
+      !application?.signinMethods?.some(signinMethod => signinMethod?.name === "Device login" && signinMethod.rule === "Login page") ||
+      this.state.type === "device") {
       return null;
     }
 
@@ -1872,7 +1908,9 @@ class LoginPage extends React.Component {
       );
     }
 
-    if (application.signinMethods?.some(method => method.name === "Device login" && method.rule === "Login page") && this.state.type !== "device") {
+    if (application.signinMethods?.some(method => method.name === "Device login" && method.rule === "Login page") &&
+      this.state.type !== "device" &&
+      !this.isOrganizationChoiceBoxVisible(application.orgChoiceMode)) {
       sidePanels.push(
         <div key="device-panel">
           {this.renderDeviceLoginSidePanel(application)}
