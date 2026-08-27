@@ -1,0 +1,221 @@
+[1mdiff --git a/.github/workflows/build.yml b/.github/workflows/build.yml[m
+[1mindex 108ce816..5753a5c2 100644[m
+[1m--- a/.github/workflows/build.yml[m
+[1m+++ b/.github/workflows/build.yml[m
+[36m@@ -1,10 +1,6 @@[m
+ name: 手动构建镜像到阿里云ACR[m
+ [m
+[31m-# 仅版本号在此修改，其余全部读取 GitHub Secrets 配置[m
+[31m-env:[m
+[31m-  CUSTOM_VERSION: "v0.3.153.0"[m
+[31m-[m
+[31m-# 仅手动点击触发[m
+[32m+[m[32m# 仅手动点击触发；镜像版本会根据当前提交包含的最近 Casdoor 发布标签自动计算。[m
+ on:[m
+   workflow_dispatch:[m
+ [m
+[36m@@ -12,8 +8,25 @@[m [mjobs:[m
+   build-and-push:[m
+     runs-on: ubuntu-latest[m
+     steps:[m
+[31m-      - name: 拉取代码[m
+[32m+[m[32m      - name: 拉取代码及历史标签[m
+         uses: actions/checkout@v4[m
+[32m+[m[32m        with:[m
+[32m+[m[32m          fetch-depth: 0[m
+[32m+[m
+[32m+[m[32m      - name: 自动解析 Casdoor 镜像版本[m
+[32m+[m[32m        shell: bash[m
+[32m+[m[32m        run: |[m
+[32m+[m[32m          set -euo pipefail[m
+[32m+[m[32m          git fetch --force --tags https://github.com/casdoor/casdoor.git '+refs/tags/v*:refs/tags/v*'[m
+[32m+[m[32m          RELEASE_TAG="$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD)"[m
+[32m+[m[32m          IFS='.' read -r UPSTREAM_MAJOR UPSTREAM_MINOR UPSTREAM_PATCH <<< "${RELEASE_TAG#v}"[m
+[32m+[m[32m          if [[ -z "${UPSTREAM_MAJOR}" || -z "${UPSTREAM_MINOR}" || -z "${UPSTREAM_PATCH}" ]]; then[m
+[32m+[m[32m            echo "无法解析 Casdoor 上游版本标签：${RELEASE_TAG}" >&2[m
+[32m+[m[32m            exit 1[m
+[32m+[m[32m          fi[m
+[32m+[m[32m          CUSTOM_VERSION="v0.${UPSTREAM_MAJOR}.${UPSTREAM_MINOR}.${UPSTREAM_PATCH}"[m
+[32m+[m[32m          echo "CUSTOM_VERSION=${CUSTOM_VERSION}" >> "$GITHUB_ENV"[m
+[32m+[m[32m          echo "将构建 Casdoor ${RELEASE_TAG} 对应镜像：${CUSTOM_VERSION}"[m
+ [m
+       # 临时跳过最新 Dockerfile 中的 Go 测试；不会修改仓库提交内容。[m
+       - name: 临时跳过测试（仅构建使用）[m
+[1mdiff --git a/controllers/native_sso.go b/controllers/native_sso.go[m
+[1mindex d7efac41..88062fd4 100644[m
+[1m--- a/controllers/native_sso.go[m
+[1m+++ b/controllers/native_sso.go[m
+[36m@@ -76,12 +76,18 @@[m [mfunc (c *ApiController) NativeSsoComplete() {[m
+ 	}[m
+ [m
+ 	responseType := c.Ctx.Input.Query("responseType")[m
+[31m-	if responseType == "" {[m
+[32m+[m	[32m// Older web companions could serialize an absent response type as the[m
+[32m+[m	[32m// literal string "undefined". Treat absent values as the normal direct[m
+[32m+[m	[32m// login flow while keeping other unexpected response types visible to the[m
+[32m+[m	[32m// standard authorization handler.[m
+[32m+[m	[32mif responseType == "" || responseType == "undefined" || responseType == "null" {[m
+ 		responseType = ResponseTypeLogin[m
+ 	}[m
+ 	authForm := form.AuthForm{[m
+ 		Type:         responseType,[m
+ 		SigninMethod: "Native SSO",[m
+[32m+[m		[32mSamlRequest:  c.Ctx.Input.Query("samlRequest"),[m
+[32m+[m		[32mRelayState:   c.Ctx.Input.Query("relayState"),[m
+ 	}[m
+ 	resp := c.HandleLoggedIn(application, user, &authForm)[m
+ [m
+[1mdiff --git a/web/src/App.less b/web/src/App.less[m
+[1mindex 4746742f..fbd2d4cc 100644[m
+[1m--- a/web/src/App.less[m
+[1m+++ b/web/src/App.less[m
+[36m@@ -146,6 +146,18 @@[m [mimg {[m
+   overflow: hidden;[m
+ }[m
+ [m
+[32m+[m[32m/* Keep the dark login container structurally identical to the light one.[m
+[32m+[m[32m * Without this flex layout, optional login panels are stacked instead of[m
+[32m+[m[32m * appearing in their expected left-to-right order.[m
+[32m+[m[32m */[m
+[32m+[m[32m.login-panel-dark {[m
+[32m+[m[32m  margin-top: 50px;[m
+[32m+[m[32m  margin-bottom: 50px;[m
+[32m+[m[32m  display: flex;[m
+[32m+[m[32m  background-color: rgb(51 51 51);[m
+[32m+[m[32m  overflow: hidden;[m
+[32m+[m[32m}[m
+[32m+[m
+ .login-form {[m
+   text-align: center;[m
+   padding: 30px;[m
+[1mdiff --git a/web/src/auth/AuthBackend.js b/web/src/auth/AuthBackend.js[m
+[1mindex 5fc74491..81b332fe 100644[m
+[1m--- a/web/src/auth/AuthBackend.js[m
+[1m+++ b/web/src/auth/AuthBackend.js[m
+[36m@@ -123,8 +123,15 @@[m [mexport function completeDeviceLogin(deviceCode, oAuthParams) {[m
+   }).then(res => res.json());[m
+ }[m
+ [m
+[32m+[m[32mfunction nativeSsoParamsToQuery(params) {[m
+[32m+[m[32m  const query = oAuthParamsToQuery(params);[m
+[32m+[m[32m  const samlRequestQuery = params?.samlRequest ? `&samlRequest=${encodeURIComponent(params.samlRequest)}` : "";[m
+[32m+[m[32m  const relayStateQuery = params?.relayState ? `&relayState=${encodeURIComponent(params.relayState)}` : "";[m
+[32m+[m[32m  return `${query}${samlRequestQuery}${relayStateQuery}`;[m
+[32m+[m[32m}[m
+[32m+[m
+ export function completeNativeSso(accessToken, oAuthParams) {[m
+[31m-  return fetch(`${authConfig.serverUrl}/api/native-sso-complete${oAuthParamsToQuery(oAuthParams)}`, {[m
+[32m+[m[32m  return fetch(`${authConfig.serverUrl}/api/native-sso-complete${nativeSsoParamsToQuery(oAuthParams)}`, {[m
+     method: "POST",[m
+     credentials: "include",[m
+     body: JSON.stringify({accessToken}),[m
+[1mdiff --git a/web/src/auth/LoginPage.js b/web/src/auth/LoginPage.js[m
+[1mindex 424429cb..6288d291 100644[m
+[1m--- a/web/src/auth/LoginPage.js[m
+[1m+++ b/web/src/auth/LoginPage.js[m
+[36m@@ -1317,9 +1317,15 @@[m [mclass LoginPage extends React.Component {[m
+     // SAML authorization URLs have samlRequest/relayState but no OAuth client_id.[m
+     // Preserve the application clientId used by NativeSsoPanel's token exchange.[m
+     const oAuthParams = Util.getOAuthGetParameters() || {};[m
+[32m+[m[32m    const responseType = oAuthParams.responseType || (oAuthParams.samlRequest ? "saml" : "login");[m
+     const nativeSsoParams = {[m
+       ...oAuthParams,[m
+       clientId: this.props.application?.clientId || oAuthParams.clientId || "",[m
+[32m+[m[32m      // A direct /login request has no OAuth query parameters. Always send a[m
+[32m+[m[32m      // concrete response type so the completion API never receives the literal[m
+[32m+[m[32m      // string "undefined" through the generic OAuth query serializer.[m
+[32m+[m[32m      responseType: responseType,[m
+[32m+[m[32m      type: oAuthParams.type || responseType,[m
+     };[m
+     AuthBackend.completeNativeSso(accessToken, nativeSsoParams).then((res) => {[m
+       if (res.status !== "ok") {[m
+[36m@@ -1327,7 +1333,6 @@[m [mclass LoginPage extends React.Component {[m
+         return;[m
+       }[m
+ [m
+[31m-      const responseType = nativeSsoParams.responseType || "login";[m
+       const responseTypes = responseType.split(" ");[m
+       const responseMode = nativeSsoParams.responseMode || "query";[m
+       if (responseType === "login") {[m
+[36m@@ -1355,6 +1360,28 @@[m [mclass LoginPage extends React.Component {[m
+         } else {[m
+           Setting.goToLink(`${nativeSsoParams.redirectUri}#${amendatoryResponseType}=${res.data}&state=${nativeSsoParams.state}&token_type=bearer`);[m
+         }[m
+[32m+[m[32m      } else if (responseType === "saml") {[m
+[32m+[m[32m        if (res.data === RequiredMfa) {[m
+[32m+[m[32m          this.props.onLoginSuccess(window.location.href);[m
+[32m+[m[32m          return;[m
+[32m+[m[32m        }[m
+[32m+[m[32m        if (res.data3) {[m
+[32m+[m[32m          sessionStorage.setItem("signinUrl", window.location.pathname + window.location.search);[m
+[32m+[m[32m          Setting.goToLinkSoft(this, "/account");[m
+[32m+[m[32m          return;[m
+[32m+[m[32m        }[m
+[32m+[m[32m        if (res.data2?.method === "POST") {[m
+[32m+[m[32m          this.setState({[m
+[32m+[m[32m            samlResponse: res.data,[m
+[32m+[m[32m            redirectUrl: res.data2.redirectUrl,[m
+[32m+[m[32m            relayState: nativeSsoParams.relayState,[m
+[32m+[m[32m          });[m
+[32m+[m[32m        } else if (res.data2?.redirectUrl) {[m
+[32m+[m[32m          const redirectUri = res.data2.redirectUrl;[m
+[32m+[m[32m          Setting.goToLink(`${redirectUri}${redirectUri.includes("?") ? "&" : "?"}SAMLResponse=${encodeURIComponent(res.data)}&RelayState=${encodeURIComponent(nativeSsoParams.relayState || "")}`);[m
+[32m+[m[32m        } else {[m
+[32m+[m[32m          this.handleNativeSsoFallback(i18next.t("login:Invalid Native SSO response"));[m
+[32m+[m[32m        }[m
+       } else {[m
+         this.handleNativeSsoFallback(i18next.t("login:Invalid Native SSO response"));[m
+       }[m
+[36m@@ -1364,7 +1391,10 @@[m [mclass LoginPage extends React.Component {[m
+   }[m
+ [m
+   shouldRenderNativeSso(application) {[m
+[31m-    return this.state.mode === "signin" && this.state.type !== "device" && application?.clientId;[m
+[32m+[m[32m    return this.state.mode === "signin" &&[m
+[32m+[m[32m      this.state.type !== "device" &&[m
+[32m+[m[32m      application?.clientId &&[m
+[32m+[m[32m      !this.isOrganizationChoiceBoxVisible(application?.orgChoiceMode);[m
+   }[m
+ [m
+   renderSignedInBox() {[m
+[36m@@ -1427,7 +1457,9 @@[m [mclass LoginPage extends React.Component {[m
+   }[m
+ [m
+   renderDeviceLoginSidePanel(application) {[m
+[31m-    if (!application?.signinMethods?.some(signinMethod => signinMethod?.name === "Device login" && signinMethod.rule === "Login page") || this.state.type === "device") {[m
+[32m+[m[32m    if (this.isOrganizationChoiceBoxVisible(application?.orgChoiceMode) ||[m
+[32m+[m[32m      !application?.signinMethods?.some(signinMethod => signinMethod?.name === "Device login" && signinMethod.rule === "Login page") ||[m
+[32m+[m[32m      this.state.type === "device") {[m
+       return null;[m
+     }[m
+ [m
+[36m@@ -1808,7 +1840,9 @@[m [mclass LoginPage extends React.Component {[m
+       );[m
+     }[m
+ [m
+[31m-    if (application.signinMethods?.some(method => method.name === "Device login" && method.rule === "Login page") && this.state.type !== "device") {[m
+[32m+[m[32m    if (application.signinMethods?.some(method => method.name === "Device login" && method.rule === "Login page") &&[m
+[32m+[m[32m      this.state.type !== "device" &&[m
+[32m+[m[32m      !this.isOrganizationChoiceBoxVisible(application.orgChoiceMode)) {[m
+       sidePanels.push([m
+         <div key="device-panel">[m
+           {this.renderDeviceLoginSidePanel(application)}[m
+[1mdiff --git a/web/src/auth/NativeSsoPanel.js b/web/src/auth/NativeSsoPanel.js[m
+[1mindex 4eeddc73..da8b2d3f 100644[m
+[1m--- a/web/src/auth/NativeSsoPanel.js[m
+[1m+++ b/web/src/auth/NativeSsoPanel.js[m
+[36m@@ -86,12 +86,13 @@[m [mclass NativeSsoPanel extends React.Component {[m
+ [m
+   getNativeSsoRequestContext() {[m
+     const oAuthParams = Util.getOAuthGetParameters();[m
+[32m+[m[32m    const responseType = oAuthParams?.responseType || (oAuthParams?.samlRequest ? "saml" : this.props.type || "login");[m
+     return {[m
+       serverUrl: Setting.getFullServerUrl(),[m
+       clientId: this.props.application?.clientId || oAuthParams?.clientId || "",[m
+       applicationName: this.props.application?.name || "",[m
+       organization: this.props.application?.organization || "",[m
+[31m-      responseType: oAuthParams?.responseType || this.props.type || "login",[m
+[32m+[m[32m      responseType: responseType,[m
+       redirectUri: oAuthParams?.redirectUri || "",[m
+       scope: oAuthParams?.scope || "openid profile email device_sso",[m
+       state: oAuthParams?.state || "",[m

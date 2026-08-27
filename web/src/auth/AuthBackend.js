@@ -123,6 +123,24 @@ export function completeDeviceLogin(deviceCode, oAuthParams) {
   }).then(res => res.json());
 }
 
+function nativeSsoParamsToQuery(params) {
+  const query = oAuthParamsToQuery(params);
+  const samlRequestQuery = params?.samlRequest ? `&samlRequest=${encodeURIComponent(params.samlRequest)}` : "";
+  const relayStateQuery = params?.relayState ? `&relayState=${encodeURIComponent(params.relayState)}` : "";
+  return `${query}${samlRequestQuery}${relayStateQuery}`;
+}
+
+export function completeNativeSso(accessToken, oAuthParams) {
+  return fetch(`${authConfig.serverUrl}/api/native-sso-complete${nativeSsoParamsToQuery(oAuthParams)}`, {
+    method: "POST",
+    credentials: "include",
+    body: JSON.stringify({accessToken}),
+    headers: {
+      "Accept-Language": Setting.getAcceptLanguage(),
+    },
+  }).then(res => res.json());
+}
+
 export function login(values, oAuthParams) {
   return fetch(`${authConfig.serverUrl}/api/login${oAuthParamsToQuery(oAuthParams)}`, {
     method: "POST",

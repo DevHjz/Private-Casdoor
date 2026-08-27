@@ -146,6 +146,18 @@ img {
   overflow: hidden;
 }
 
+/* Keep the dark login container structurally identical to the light one.
+ * Without this flex layout, optional login panels are stacked instead of
+ * appearing in their expected left-to-right order.
+ */
+.login-panel-dark {
+  margin-top: 50px;
+  margin-bottom: 50px;
+  display: flex;
+  background-color: rgb(51 51 51);
+  overflow: hidden;
+}
+
 .login-form {
   text-align: center;
   padding: 30px;
