@@ -274,6 +274,8 @@ export default function LoginPage({type = "login"}: {type?: LoginType}) {
     if (responseType === "login") {
       Setting.showMessage("success", i18next.t("application:Logged in successfully"));
       reload().then(() => navigate(Setting.getFromLink(), {state: {from: "/login"}}));
+    } else if (responseType === "device") {
+      navigate(`/result/${application.name}?type=device&userCode=${params.userCode}`);
     } else if (responseType === "code") {
       postCodeLoginAction(res);
     } else if (responseTypes.includes("token") || responseTypes.includes("id_token")) {
@@ -318,14 +320,15 @@ export default function LoginPage({type = "login"}: {type?: LoginType}) {
   };
 
   const completeNativeSsoLogin = (result: any) => {
-    const values = applyRequestType({
-      application: application.name,
-      organization: application.organization,
-      accessToken: result.accessToken,
-      signinMethod: "Native SSO",
-      language: Setting.getLanguage(),
-    });
-    doLogin(values);
+    const oAuthParams = Util.getOAuthGetParameters();
+    AuthBackend.completeNativeSso(result.accessToken, oAuthParams)
+      .then((res: any) => {
+        if (res.status === "ok") {
+          handleLoginResult(res, applyRequestType({}), oAuthParams);
+        } else {
+          Setting.showMessage("error", res.msg);
+        }
+      });
   };
 
   const handleNativeSsoFallback = (message: string, agent: any) => {

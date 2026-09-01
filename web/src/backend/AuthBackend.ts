@@ -65,6 +65,12 @@ export function oAuthParamsToQuery(oAuthParams) {
   return `?clientId=${oAuthParams.clientId}&responseType=${oAuthParams.responseType}&redirectUri=${encodeURIComponent(oAuthParams.redirectUri)}&type=${oAuthParams.type}&scope=${oAuthParams.scope}&state=${oAuthParams.state}&nonce=${oAuthParams.nonce}&code_challenge_method=${oAuthParams.challengeMethod}&code_challenge=${oAuthParams.codeChallenge}${resourceQuery}`;
 }
 
+export function nativeSsoParamsToQuery(params) {
+  const samlRequestQuery = params?.samlRequest ? `&samlRequest=${encodeURIComponent(params.samlRequest)}` : "";
+  const relayStateQuery = params?.relayState ? `&relayState=${encodeURIComponent(params.relayState)}` : "";
+  return `${oAuthParamsToQuery(params)}${samlRequestQuery}${relayStateQuery}`;
+}
+
 export function getApplicationLogin(params) {
   let queryParams = "";
   if (params?.type === "cas") {
@@ -118,6 +124,18 @@ export function completeDeviceLogin(deviceCode, oAuthParams) {
     method: "POST",
     credentials: "include",
     headers: {
+      "Accept-Language": Setting.getAcceptLanguage(),
+    },
+  }).then(res => res.json());
+}
+
+export function completeNativeSso(accessToken, oAuthParams) {
+  return fetch(`${authConfig.serverUrl}/api/native-sso-complete${nativeSsoParamsToQuery(oAuthParams)}`, {
+    method: "POST",
+    credentials: "include",
+    body: JSON.stringify({accessToken: accessToken}),
+    headers: {
+      "Content-Type": "application/json",
       "Accept-Language": Setting.getAcceptLanguage(),
     },
   }).then(res => res.json());
