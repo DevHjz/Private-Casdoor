@@ -130,39 +130,49 @@ export function NativeSsoPanel({
     if (initialAgent?.port) {
       setAgent(initialAgent);
       updateActive(true);
-    } else {
-      updateActive(false);
     }
 
-    for (const port of candidatePorts) {
-      try {
-        const query = new URLSearchParams({
-          serverUrl: Setting.getFullServerUrl(),
-          clientId: application.clientId,
-        });
-        const status = await fetchNativeSsoJson(`${getNativeSsoBaseUrl(port)}${nativeSsoStatusPath}?${query.toString()}`);
-        
-        if (disposedRef.current) return;
+    const discover = async () => {
+      for (const port of candidatePorts) {
+        try {
+          const query = new URLSearchParams({
+            serverUrl: Setting.getFullServerUrl(),
+            clientId: application.clientId,
+          });
+          const status = await fetchNativeSsoJson(`${getNativeSsoBaseUrl(port)}${nativeSsoStatusPath}?${query.toString()}`);
+          
+          if (disposedRef.current) return true;
 
-        if (isNativeSsoStatusValid(status)) {
-          const newAgent = {
-            ...initialAgent,
-            ...status,
-            port: port,
-          };
-          setAgent(newAgent);
-          setError("");
-          updateActive(true);
-          return;
+          if (isNativeSsoStatusValid(status)) {
+            const newAgent = {
+              ...initialAgent,
+              ...status,
+              port: port,
+            };
+            setAgent(newAgent);
+            setError("");
+            updateActive(true);
+            return true;
+          }
+        } catch (e) {
+          // Continue to next port
         }
-      } catch (e) {
-        // Continue to next port
       }
-    }
+      return false;
+    };
 
-    if (!disposedRef.current) {
-      setAgent(null);
-      updateActive(false);
+    const found = await discover();
+    if (!found && !disposedRef.current) {
+      // If not found, try once more after a short delay to handle agent startup
+      setTimeout(async () => {
+        if (!disposedRef.current) {
+          const foundSecond = await discover();
+          if (!foundSecond && !disposedRef.current && !initialAgent) {
+            setAgent(null);
+            updateActive(false);
+          }
+        }
+      }, 3000);
     }
   }, [application?.clientId, initialAgent, restartKey]);
 

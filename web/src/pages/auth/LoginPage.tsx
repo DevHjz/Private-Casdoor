@@ -686,49 +686,196 @@ export default function LoginPage({type = "login"}: {type?: LoginType}) {
     !!account && account.owner === application.organization && !(type === "device" && deviceCanceled);
 
   return (
-    <AuthLayout application={application}>
-      <div className="space-y-5">
-        <h1 className="text-center text-xl font-semibold">
-          {application.displayName || i18next.t("login:Sign In")}
-        </h1>
+    <AuthLayout application={application} wide={true}>
+      <div className="grid grid-cols-2 gap-10 divide-x">
+        {/* Left Column: Sign-in Form and Third-party Providers */}
+        <div className="space-y-5 pr-2">
+          <h1 className="text-center text-xl font-semibold">
+            {application.displayName || i18next.t("login:Sign In")}
+          </h1>
 
-        {type === "device" && params.userCode ? (
-          <div className="space-y-1 text-center">
-            <h2 className="text-base font-semibold">{i18next.t("login:Approve sign-in on this device")}</h2>
-            <div className="font-medium">{application.displayName}</div>
-            <div className="text-sm text-muted-foreground">
-              {i18next.t("login:Confirmation code")}: {params.userCode}
+          {type === "device" && params.userCode ? (
+            <div className="space-y-1 text-center">
+              <h2 className="text-base font-semibold">{i18next.t("login:Approve sign-in on this device")}</h2>
+              <div className="font-medium">{application.displayName}</div>
+              <div className="text-sm text-muted-foreground">
+                {i18next.t("login:Confirmation code")}: {params.userCode}
+              </div>
             </div>
-          </div>
-        ) : null}
+          ) : null}
 
-        {showSignedInBox ? (
-          <div className="space-y-3">
-            <div className="text-sm">
-              {type === "device"
-                ? i18next.t("login:Continue with your current account to approve this sign-in")
-                : i18next.t("login:Continue with")}
-              &nbsp;:
+          {showSignedInBox ? (
+            <div className="space-y-3">
+              <div className="text-sm">
+                {type === "device"
+                  ? i18next.t("login:Continue with your current account to approve this sign-in")
+                  : i18next.t("login:Continue with")}
+                &nbsp;:
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-12 w-full justify-center gap-3"
+                onClick={loginAsCurrentAccount}
+              >
+                <Avatar className="h-8 w-8">
+                  {Setting.getEffectiveAvatarUrl(account) ? (
+                    <AvatarImage src={Setting.getEffectiveAvatarUrl(account)} alt={account.name} />
+                  ) : null}
+                  <AvatarFallback style={{backgroundColor: Setting.getAvatarColor(account.name), color: "#fff"}}>
+                    {(account.name || "?").charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                {account.displayName ? `${account.name} (${account.displayName})` : account.name}
+              </Button>
+              <div className="text-sm">{i18next.t("login:Or sign in with another account")}&nbsp;:</div>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-12 w-full justify-center gap-3"
-              onClick={loginAsCurrentAccount}
-            >
-              <Avatar className="h-8 w-8">
-                {Setting.getEffectiveAvatarUrl(account) ? (
-                  <AvatarImage src={Setting.getEffectiveAvatarUrl(account)} alt={account.name} />
+          ) : null}
+
+          {showTabs ? (
+            <Tabs value={loginMethod} onValueChange={(v) => setLoginMethod(v as LoginMethod)}>
+              <TabsList
+                className={cn(
+                  "w-full",
+                  tabs <= 3
+                    ? "grid"
+                    : "flex justify-start overflow-x-auto scrollbar-thin [&>button]:shrink-0",
+                )}
+                style={tabs <= 3 ? {gridTemplateColumns: `repeat(${tabs}, minmax(0, 1fr))`} : undefined}
+              >
+                {passwordEnabled ? <TabsTrigger value="password">{i18next.t("general:Password")}</TabsTrigger> : null}
+                {codeEnabled ? (
+                  <TabsTrigger value="verificationCode">{i18next.t("login:Verification code")}</TabsTrigger>
                 ) : null}
-                <AvatarFallback style={{backgroundColor: Setting.getAvatarColor(account.name), color: "#fff"}}>
-                  {(account.name || "?").charAt(0).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
-              {account.displayName ? `${account.name} (${account.displayName})` : account.name}
-            </Button>
-            <div className="text-sm">{i18next.t("login:Or sign in with another account")}&nbsp;:</div>
+                {ldapEnabled ? <TabsTrigger value="ldap">{i18next.t("login:LDAP")}</TabsTrigger> : null}
+                {webAuthnEnabled ? <TabsTrigger value="webAuthn">{i18next.t("login:WebAuthn")}</TabsTrigger> : null}
+                {faceIdEnabled ? <TabsTrigger value="faceId">{i18next.t("login:Face ID")}</TabsTrigger> : null}
+                {wechatEnabled ? <TabsTrigger value="wechat">{i18next.t("login:WeChat")}</TabsTrigger> : null}
+              </TabsList>
+            </Tabs>
+          ) : null}
+
+          {isPanelMethod ? (
+            <div className="flex justify-center">
+              <WeChatLoginPanel application={application} />
+            </div>
+          ) : (
+            <form className="space-y-4" onSubmit={submit}>
+              <div className="space-y-2">
+                <Label htmlFor="username">
+                  {isCodeMethod ? i18next.t("login:Email or phone") : i18next.t("signup:Username")}
+                </Label>
+                <Input
+                  id="username"
+                  autoFocus
+                  autoComplete="username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                />
+              </div>
+
+              {isCodeMethod ? (
+                <div className="space-y-2">
+                  <Label>{i18next.t("login:Verification code")}</Label>
+                  <SendCodeInput
+                    value={code}
+                    onChange={setCode}
+                    method="login"
+                    destType={username.includes("@") ? "email" : "phone"}
+                    dest={username}
+                    application={application}
+                    applicationId={Setting.getApplicationName(application)}
+                    useInlineCaptcha={Setting.isInlineCaptchaEnabled(application)}
+                    captchaValue={captchaValues}
+                    refreshCaptcha={refreshInlineCaptcha}
+                  />
+                </div>
+              ) : loginMethod === "webAuthn" || loginMethod === "faceId" ? null : (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password">{i18next.t("general:Password")}</Label>
+                    <Link
+                      to={`/forget/${application.name}`}
+                      className="text-xs text-muted-foreground underline-offset-4 hover:underline"
+                    >
+                      {i18next.t("login:Forgot password?")}
+                    </Link>
+                  </div>
+                  <Input
+                    id="password"
+                    type="password"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </div>
+              )}
+
+              {captchaProvider && Setting.isInlineCaptchaEnabled(application) ? (
+                <CaptchaModal
+                  noModal
+                  owner={captchaProvider.owner}
+                  name={captchaProvider.name}
+                  isCurrentProvider
+                  innerRef={captchaRef}
+                  onUpdateToken={(captchaType, captchaToken, clientSecret) =>
+                    setCaptchaValues({captchaType, captchaToken, clientSecret})
+                  }
+                />
+              ) : null}
+
+              <div className="flex items-center gap-2">
+                <Checkbox id="autoSignin" checked={autoSignin} onCheckedChange={(v) => setAutoSignin(v === true)} />
+                <Label htmlFor="autoSignin" className="text-sm font-normal">
+                  {i18next.t("login:Auto sign in")}
+                </Label>
+              </div>
+
+              {application.termsOfUse ? (
+                <AgreementCheckbox application={application} checked={agreed} onChange={setAgreed} />
+              ) : null}
+
+              <Button type="submit" className="w-full" loading={loading}>
+                {loginMethod === "webAuthn"
+                  ? i18next.t("login:Sign in with WebAuthn")
+                  : loginMethod === "faceId"
+                    ? i18next.t("login:Sign in with Face ID")
+                    : type === "device"
+                      ? i18next.t("login:Approve and sign in")
+                      : i18next.t("login:Sign In")}
+              </Button>
+
+              {type === "device" ? (
+                <Button type="button" variant="outline" className="w-full" onClick={cancelDeviceLogin}>
+                  {i18next.t("general:Cancel")}
+                </Button>
+              ) : null}
+            </form>
+          )}
+
+          {application.enableSignUp ? (
+            <p className="text-center text-sm text-muted-foreground">
+              {i18next.t("login:No account?")}{" "}
+              <Link to={`/signup/${application.name}`} className="text-foreground underline-offset-4 hover:underline">
+                {i18next.t("login:sign up now")}
+              </Link>
+            </p>
+          ) : null}
+
+          <div className="pt-2">
+            <ProviderButtons application={application} method="signin" />
           </div>
-        ) : nativeSsoActive && !(type === "login" && (orgChoiceMode === "Select" || orgChoiceMode === "Input")) ? (
+
+          <GoogleOneTap application={application} />
+        </div>
+
+        {/* Right Column: QR Codes and Native SSO */}
+        <div className="flex flex-col items-center justify-center space-y-6 pl-10">
+          {application?.formSideHtml && (
+            <div className="w-full">
+              <div dangerouslySetInnerHTML={{__html: application.formSideHtml}} />
+            </div>
+          )}
           <NativeSsoPanel
             application={application}
             type={type}
@@ -738,148 +885,28 @@ export default function LoginPage({type = "login"}: {type?: LoginType}) {
             onSuccess={completeNativeSsoLogin}
             onFallback={handleNativeSsoFallback}
           />
-        ) : null}
 
-        {showTabs ? (
-          <Tabs value={loginMethod} onValueChange={(v) => setLoginMethod(v as LoginMethod)}>
-            {/* Equal grid tracks only work while the labels fit. With five sign-in
-                methods enabled each track is ~60px in a max-w-sm card, and the
-                triggers are whitespace-nowrap, so the labels overflowed their
-                track and painted on top of one another. Past three, the strip
-                keeps each label at its natural width and scrolls instead. */}
-            <TabsList
-              className={cn(
-                "w-full",
-                tabs <= 3
-                  ? "grid"
-                  : "flex justify-start overflow-x-auto scrollbar-thin [&>button]:shrink-0",
-              )}
-              style={tabs <= 3 ? {gridTemplateColumns: `repeat(${tabs}, minmax(0, 1fr))`} : undefined}
-            >
-              {passwordEnabled ? <TabsTrigger value="password">{i18next.t("general:Password")}</TabsTrigger> : null}
-              {codeEnabled ? (
-                <TabsTrigger value="verificationCode">{i18next.t("login:Verification code")}</TabsTrigger>
-              ) : null}
-              {ldapEnabled ? <TabsTrigger value="ldap">{i18next.t("login:LDAP")}</TabsTrigger> : null}
-              {webAuthnEnabled ? <TabsTrigger value="webAuthn">{i18next.t("login:WebAuthn")}</TabsTrigger> : null}
-              {faceIdEnabled ? <TabsTrigger value="faceId">{i18next.t("login:Face ID")}</TabsTrigger> : null}
-              {wechatEnabled ? <TabsTrigger value="wechat">{i18next.t("login:WeChat")}</TabsTrigger> : null}
-            </TabsList>
-          </Tabs>
-        ) : null}
-
-        {isPanelMethod ? <WeChatLoginPanel application={application} /> : (
-          <form className="space-y-4" onSubmit={submit}>
-            <div className="space-y-2">
-              <Label htmlFor="username">
-                {isCodeMethod ? i18next.t("login:Email or phone") : i18next.t("signup:Username")}
-              </Label>
-              <Input
-                id="username"
-                autoFocus
-                autoComplete="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-              />
+          {!nativeSsoActive && deviceLoginOnLoginPage && (
+            <div className="w-full">
+              <DeviceLoginPanel application={application} onSuccess={completeDeviceLogin} />
             </div>
+          )}
 
-            {isCodeMethod ? (
-              <div className="space-y-2">
-                <Label>{i18next.t("login:Verification code")}</Label>
-                <SendCodeInput
-                  value={code}
-                  onChange={setCode}
-                  method="login"
-                  destType={username.includes("@") ? "email" : "phone"}
-                  dest={username}
-                  application={application}
-                  applicationId={Setting.getApplicationName(application)}
-                  useInlineCaptcha={Setting.isInlineCaptchaEnabled(application)}
-                  captchaValue={captchaValues}
-                  refreshCaptcha={refreshInlineCaptcha}
-                />
-              </div>
-            ) : loginMethod === "webAuthn" || loginMethod === "faceId" ? null : (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="password">{i18next.t("general:Password")}</Label>
-                  <Link
-                    to={`/forget/${application.name}`}
-                    className="text-xs text-muted-foreground underline-offset-4 hover:underline"
-                  >
-                    {i18next.t("login:Forgot password?")}
-                  </Link>
-                </div>
-                <Input
-                  id="password"
-                  type="password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-            )}
-
-            {captchaProvider && Setting.isInlineCaptchaEnabled(application) ? (
-              <CaptchaModal
-                noModal
-                owner={captchaProvider.owner}
-                name={captchaProvider.name}
-                isCurrentProvider
-                innerRef={captchaRef}
-                onUpdateToken={(captchaType, captchaToken, clientSecret) =>
-                  setCaptchaValues({captchaType, captchaToken, clientSecret})
-                }
-              />
-            ) : null}
-
-            <div className="flex items-center gap-2">
-              <Checkbox id="autoSignin" checked={autoSignin} onCheckedChange={(v) => setAutoSignin(v === true)} />
-              <Label htmlFor="autoSignin" className="text-sm font-normal">
-                {i18next.t("login:Auto sign in")}
-              </Label>
+          {!nativeSsoActive && !deviceLoginOnLoginPage && !isPanelMethod && wechatEnabled && (
+            <div className="w-full text-center space-y-4">
+              <h3 className="text-sm font-medium">{i18next.t("provider:Please use WeChat to scan the QR code and follow the official account for sign in")}</h3>
+              <WeChatLoginPanel application={application} />
             </div>
+          )}
 
-            {application.termsOfUse ? (
-              <AgreementCheckbox application={application} checked={agreed} onChange={setAgreed} />
-            ) : null}
-
-            <Button type="submit" className="w-full" loading={loading}>
-              {loginMethod === "webAuthn"
-                ? i18next.t("login:Sign in with WebAuthn")
-                : loginMethod === "faceId"
-                  ? i18next.t("login:Sign in with Face ID")
-                  : type === "device"
-                    ? i18next.t("login:Approve and sign in")
-                    : i18next.t("login:Sign In")}
-            </Button>
-
-            {type === "device" ? (
-              <Button type="button" variant="outline" className="w-full" onClick={cancelDeviceLogin}>
-                {i18next.t("general:Cancel")}
-              </Button>
-            ) : null}
-          </form>
-        )}
-
-        {deviceLoginOnLoginPage ? (
-          <div className="border-t pt-4">
-            <DeviceLoginPanel application={application} onSuccess={completeDeviceLogin} />
-          </div>
-        ) : null}
-
-        {application.enableSignUp ? (
-          <p className="text-center text-sm text-muted-foreground">
-            {i18next.t("login:No account?")}{" "}
-            <Link to={`/signup/${application.name}`} className="text-foreground underline-offset-4 hover:underline">
-              {i18next.t("login:sign up now")}
-            </Link>
-          </p>
-        ) : null}
-
-        <ProviderButtons application={application} method="signin" />
-
-        <GoogleOneTap application={application} />
+          {!nativeSsoActive && !deviceLoginOnLoginPage && !wechatEnabled && (
+            <div className="flex flex-col items-center text-muted-foreground/40 py-10">
+              <div className="h-40 w-40 rounded-xl border-2 border-dashed flex items-center justify-center">
+                <span className="text-xs text-center px-4">{i18next.t("login:Scan QR code to sign in")}</span>
+              </div>
+            </div>
+          )}
+        </div>
 
         {faceValues !== null ? (
           hasFaceIdProvider ? (
