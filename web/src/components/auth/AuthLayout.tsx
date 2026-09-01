@@ -73,7 +73,7 @@ export function AuthLayout({application, children, className, wide}: AuthLayoutP
       </div>
 
       <div className="flex flex-1 items-start justify-center px-4 pb-10 pt-4 sm:items-center sm:pt-0">
-        <div className={cn("w-full", wide ? "max-w-xl" : "max-w-sm", className)}>
+        <div className={cn("w-full", wide ? "max-w-4xl" : "max-w-sm", className)}>
           <div className="mb-6 flex justify-center">
             {application?.homepageUrl ? (
               <a href={application.homepageUrl} target="_blank" rel="noreferrer">
