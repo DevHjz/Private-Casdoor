@@ -21,6 +21,7 @@ import {ProviderButtons} from "@/components/auth/ProviderButtons";
 import {WeChatLoginPanel} from "@/components/auth/WeChatLoginPanel";
 import {OrganizationSelect} from "@/components/common/OrganizationSelect";
 import {RedirectForm} from "@/components/auth/RedirectForm";
+import {NativeSsoPanel} from "@/components/auth/NativeSsoPanel";
 import {SendCodeInput, type CaptchaValues} from "@/components/auth/SendCodeInput";
 import {CaptchaModal, type CaptchaHandle} from "@/components/common/CaptchaModal";
 import {getCaptchaProvider} from "@/lib/captcha";
@@ -144,6 +145,9 @@ export default function LoginPage({type = "login"}: {type?: LoginType}) {
   const [captchaValues, setCaptchaValues] = React.useState<CaptchaValues | undefined>(undefined);
   const captchaRef = React.useRef<CaptchaHandle | null>(null);
   const [saml, setSaml] = React.useState<{response: string; redirectUrl: string; relayState: string} | null>(null);
+  const [nativeSsoActive, setNativeSsoActive] = React.useState(false);
+  const [nativeSsoAgent, setNativeSsoAgent] = React.useState<any>(null);
+  const [nativeSsoRestartKey, setNativeSsoRestartKey] = React.useState(0);
 
   const owner = params.owner;
   const applicationName = params.applicationName ?? authConfig.appName;
@@ -311,6 +315,25 @@ export default function LoginPage({type = "login"}: {type?: LoginType}) {
       newUrl.searchParams.append("ticket", res.data);
       window.location.href = newUrl.toString();
     }
+  };
+
+  const completeNativeSsoLogin = (result: any) => {
+    const values = applyRequestType({
+      application: application.name,
+      organization: application.organization,
+      accessToken: result.accessToken,
+      signinMethod: "Native SSO",
+      language: Setting.getLanguage(),
+    });
+    doLogin(values);
+  };
+
+  const handleNativeSsoFallback = (message: string, agent: any) => {
+    if (message) {
+      Setting.showMessage("error", message);
+    }
+    setNativeSsoActive(false);
+    setNativeSsoAgent(agent);
   };
 
   const checkMfa = (res: any, values: any, authParams: any, onDone: (res: any) => void) => {
@@ -705,6 +728,16 @@ export default function LoginPage({type = "login"}: {type?: LoginType}) {
             </Button>
             <div className="text-sm">{i18next.t("login:Or sign in with another account")}&nbsp;:</div>
           </div>
+        ) : nativeSsoActive && !(type === "login" && (orgChoiceMode === "Select" || orgChoiceMode === "Input")) ? (
+          <NativeSsoPanel
+            application={application}
+            type={type}
+            initialAgent={nativeSsoAgent}
+            restartKey={nativeSsoRestartKey}
+            onActiveChange={setNativeSsoActive}
+            onSuccess={completeNativeSsoLogin}
+            onFallback={handleNativeSsoFallback}
+          />
         ) : null}
 
         {showTabs ? (
